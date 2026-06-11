@@ -2,6 +2,10 @@ import fs from "fs/promises";
 import path from "path";
 import { ENV } from "./_core/env";
 
+if (ENV.isProduction && !ENV.uploadDir) {
+  throw new Error("UPLOAD_DIR must be configured in production. Attach a persistent disk and set UPLOAD_DIR to a path inside it.");
+}
+
 const UPLOAD_DIR = ENV.uploadDir ? path.resolve(ENV.uploadDir) : path.resolve(process.cwd(), "uploads");
 
 function normalizeKey(relKey: string): string {

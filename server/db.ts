@@ -47,6 +47,10 @@ type TableName =
 type LocalRecord = Record<string, any> & { id: number };
 type LocalData = Record<TableName, LocalRecord[]>;
 
+if (ENV.isProduction && !ENV.dataDir) {
+  throw new Error("DATA_DIR must be configured in production. Attach a persistent disk and set DATA_DIR to a path inside it.");
+}
+
 const DATA_DIR = ENV.dataDir ? path.resolve(ENV.dataDir) : path.resolve(process.cwd(), ".codex-data");
 const DATA_FILE = path.join(DATA_DIR, "local-db.json");
 
