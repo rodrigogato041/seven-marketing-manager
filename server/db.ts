@@ -110,6 +110,7 @@ const nowDate = () => new Date();
 const nowMs = () => Date.now();
 const asNumber = (value: unknown) => Number(value ?? 0) || 0;
 const money = (value: unknown) => asNumber(value);
+const roundMoney = (value: number) => Math.round(value * 100) / 100;
 
 function nextId(rows: LocalRecord[]) {
   return rows.reduce((max, row) => Math.max(max, row.id || 0), 0) + 1;
@@ -720,29 +721,83 @@ export async function deletePersonalExpense(id: number) {
 export async function calculateBudgetMetrics(budgetId: number, collaboratorCosts = 0) {
   const budget = (await list("monthlyBudgets")).find(item => item.id === budgetId);
   if (!budget) throw new Error("Budget not found");
+  const period = await getMonthlyPeriodById(budget.periodId);
   const fixedCosts = await getFixedCosts(budgetId);
   const variableCosts = await getVariableCosts(budgetId);
   const personalExpenses = await getPersonalExpenses(budgetId);
+  const actualExpenses = period ? (await listExpenses()).filter(expense => asNumber(expense.date) >= period.startDate && asNumber(expense.date) <= period.endDate) : [];
   const forecastedRevenue = money(budget.forecastedRevenue);
-  const totalFixedCosts = fixedCosts.reduce((sum, item) => sum + money(item.amount), 0);
-  const totalVariableCosts = variableCosts.reduce((sum, item) => sum + money(item.amount), 0);
-  const totalPersonalExpenses = personalExpenses.reduce((sum, item) => sum + money(item.amount), 0);
-  const totalExpenses = totalFixedCosts + totalVariableCosts + totalPersonalExpenses + collaboratorCosts;
+  const plannedItems = [
+    ...fixedCosts.map(item => toBudgetExpenseItem(item, "fixed", "planned")),
+    ...variableCosts.map(item => toBudgetExpenseItem(item, "variable", "planned")),
+    ...personalExpenses.map(item => toBudgetExpenseItem(item, "personal", "planned")),
+  ];
+  let collaboratorItems = (await listCollaborators())
+    .filter(item => item.status !== "inactive" && money(item.monthlyCost) > 0)
+    .map(item => ({
+      id: item.id,
+      source: "collaborator" as const,
+      type: "collaborator" as const,
+      description: item.name || item.role || "Colaborador",
+      category: item.role || "Colaborador",
+      amount: money(item.monthlyCost),
+      date: null as number | null,
+      duplicateOf: null as string | null,
+    }));
+  if (!collaboratorItems.length && collaboratorCosts > 0) {
+    collaboratorItems = [{
+      id: 0,
+      source: "collaborator" as const,
+      type: "collaborator" as const,
+      description: "Custos de colaboradores",
+      category: "Colaborador",
+      amount: collaboratorCosts,
+      date: null,
+      duplicateOf: null,
+    }];
+  }
+  const actualItems = actualExpenses.map(item => toBudgetExpenseItem(item, classifyActualExpense(item), "actual"));
+  const acceptedActualItems: ReturnType<typeof toBudgetExpenseItem>[] = [];
+  const duplicatedActualItems: ReturnType<typeof toBudgetExpenseItem>[] = [];
+  const comparisonBase = [...plannedItems, ...collaboratorItems];
+
+  for (const item of actualItems) {
+    const duplicate = [...comparisonBase, ...acceptedActualItems].find(existing => isSameBudgetExpense(existing, item));
+    if (duplicate) {
+      duplicatedActualItems.push({ ...item, duplicateOf: `${duplicate.source}:${duplicate.id}` });
+    } else {
+      acceptedActualItems.push(item);
+    }
+  }
+
+  const allExpenseItems = [...plannedItems, ...collaboratorItems, ...acceptedActualItems];
+  const totalFixedCosts = allExpenseItems.filter(item => item.type === "fixed").reduce((sum, item) => sum + item.amount, 0);
+  const totalVariableCosts = allExpenseItems.filter(item => item.type === "variable").reduce((sum, item) => sum + item.amount, 0);
+  const totalPersonalExpenses = allExpenseItems.filter(item => item.type === "personal").reduce((sum, item) => sum + item.amount, 0);
+  const normalizedCollaboratorCosts = allExpenseItems.filter(item => item.type === "collaborator").reduce((sum, item) => sum + item.amount, 0);
+  const totalExpenses = totalFixedCosts + totalVariableCosts + totalPersonalExpenses + normalizedCollaboratorCosts;
   const netProfitForecast = forecastedRevenue - totalExpenses;
   const profitMarginPercentage = forecastedRevenue > 0 ? Math.max(-999.99, Math.min(999.99, (netProfitForecast / forecastedRevenue) * 100)) : 0;
+  const status = netProfitForecast > 0 ? "positive" : netProfitForecast > -1000 ? "warning" : "negative";
   const calcData = {
     budgetId,
-    forecastedRevenue: forecastedRevenue.toString(),
-    totalFixedCosts: totalFixedCosts.toString(),
-    totalVariableCosts: totalVariableCosts.toString(),
-    totalPersonalExpenses: totalPersonalExpenses.toString(),
-    totalCollaboratorCosts: collaboratorCosts.toString(),
-    totalExpenses: totalExpenses.toString(),
-    netProfitForecast: netProfitForecast.toString(),
-    breakEvenPoint: totalExpenses.toString(),
-    safetyMargin: Math.max(forecastedRevenue - totalExpenses, 0).toString(),
-    profitMarginPercentage: profitMarginPercentage.toString(),
-    status: netProfitForecast > 0 ? "positive" : netProfitForecast > -1000 ? "warning" : "negative",
+    forecastedRevenue: roundMoney(forecastedRevenue).toString(),
+    totalFixedCosts: roundMoney(totalFixedCosts).toString(),
+    totalVariableCosts: roundMoney(totalVariableCosts).toString(),
+    totalPersonalExpenses: roundMoney(totalPersonalExpenses).toString(),
+    totalCollaboratorCosts: roundMoney(normalizedCollaboratorCosts || collaboratorCosts).toString(),
+    totalActualExpenses: roundMoney(acceptedActualItems.reduce((sum, item) => sum + item.amount, 0)).toString(),
+    totalDuplicatedActualExpenses: roundMoney(duplicatedActualItems.reduce((sum, item) => sum + item.amount, 0)).toString(),
+    totalExpenses: roundMoney(totalExpenses).toString(),
+    netProfitForecast: roundMoney(netProfitForecast).toString(),
+    breakEvenPoint: roundMoney(totalExpenses).toString(),
+    safetyMargin: roundMoney(Math.max(forecastedRevenue - totalExpenses, 0)).toString(),
+    profitMarginPercentage: roundMoney(profitMarginPercentage).toString(),
+    status,
+    budgetStatus: status,
+    expenseItems: allExpenseItems,
+    importedActualExpenses: acceptedActualItems,
+    ignoredDuplicateExpenses: duplicatedActualItems,
   };
   const existing = (await list("budgetCalculations")).find(item => item.budgetId === budgetId);
   if (existing) {
@@ -750,6 +805,56 @@ export async function calculateBudgetMetrics(budgetId: number, collaboratorCosts
     return { ...existing, ...calcData };
   }
   return insert("budgetCalculations", calcData);
+}
+
+function normalizeBudgetText(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function textSimilarity(a: string, b: string) {
+  const left = new Set(normalizeBudgetText(a).split(" ").filter(token => token.length > 2));
+  const right = new Set(normalizeBudgetText(b).split(" ").filter(token => token.length > 2));
+  if (!left.size || !right.size) return 0;
+  const shared = Array.from(left).filter(token => right.has(token)).length;
+  return shared / Math.min(left.size, right.size);
+}
+
+function isSameBudgetExpense(a: ReturnType<typeof toBudgetExpenseItem>, b: ReturnType<typeof toBudgetExpenseItem>) {
+  const amountDiff = Math.abs(a.amount - b.amount);
+  const amountTolerance = Math.max(1, Math.min(a.amount, b.amount) * 0.02);
+  if (amountDiff > amountTolerance) return false;
+  const aText = `${a.description} ${a.category}`;
+  const bText = `${b.description} ${b.category}`;
+  const normalizedA = normalizeBudgetText(aText);
+  const normalizedB = normalizeBudgetText(bText);
+  return normalizedA.includes(normalizedB) || normalizedB.includes(normalizedA) || textSimilarity(aText, bText) >= 0.5;
+}
+
+function classifyActualExpense(expense: LocalRecord): "fixed" | "variable" | "personal" {
+  const text = normalizeBudgetText(`${expense.category} ${expense.description}`);
+  if (expense.collaboratorId || /\b(colaborador|freelancer|equipe|salario|pro labore|prolabore)\b/.test(text)) return "fixed";
+  if (/\b(pessoal|cartao|celular|moradia|mercado|dizimo|lazer|casa|alimentacao)\b/.test(text)) return "personal";
+  if (/\b(aluguel|internet|energia|agua|software|assinatura|emprestimo|estrutura|contabilidade)\b/.test(text)) return "fixed";
+  return "variable";
+}
+
+function toBudgetExpenseItem(item: LocalRecord, type: "fixed" | "variable" | "personal" | "collaborator", source: "planned" | "actual" | "collaborator") {
+  return {
+    id: item.id,
+    source,
+    type,
+    description: item.description || item.name || "Sem descricao",
+    category: item.category || item.role || "Sem categoria",
+    amount: money(item.amount ?? item.monthlyCost),
+    date: item.date ?? null,
+    duplicateOf: null as string | null,
+  };
 }
 
 export async function getBudgetCalculations(budgetId: number) {

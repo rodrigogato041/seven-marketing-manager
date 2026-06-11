@@ -235,5 +235,39 @@ describe("Budget Planning System", () => {
       expect(retrieved.length).toBeGreaterThan(0);
       expect(retrieved[0].budgetId).toBe(testBudgetId);
     });
+
+    it("should include registered expenses without double-counting similar planned costs", async () => {
+      const period = await db.getOrCreateMonthlyPeriod(2030, 1);
+      const budget = await db.getOrCreateMonthlyBudget(period.id);
+      const testBudgetId = budget.id;
+      const suffix = Date.now().toString();
+
+      await db.updateMonthlyBudget(testBudgetId, { forecastedRevenue: 5000 });
+      await db.createFixedCost({
+        budgetId: testBudgetId,
+        description: `Internet Vivo ${suffix}`,
+        amount: "300",
+        category: "Software",
+        isRecurring: true,
+      });
+      await db.createExpense({
+        amount: "300",
+        category: "Software",
+        description: `internet vivo fibra ${suffix}`,
+        date: new Date(2030, 0, 10).getTime(),
+      });
+      await db.createExpense({
+        amount: "120",
+        category: "Software",
+        description: `Adobe Creative ${suffix}`,
+        date: new Date(2030, 0, 11).getTime(),
+      });
+
+      const metrics = await db.calculateBudgetMetrics(testBudgetId, 0);
+
+      expect(parseFloat(metrics.totalDuplicatedActualExpenses.toString())).toBeGreaterThanOrEqual(300);
+      expect(parseFloat(metrics.totalActualExpenses.toString())).toBeGreaterThanOrEqual(120);
+      expect(parseFloat(metrics.totalFixedCosts.toString())).toBeGreaterThanOrEqual(420);
+    });
   });
 });

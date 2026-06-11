@@ -8,6 +8,11 @@ interface ProjectedCashFlowProps {
   forecastedRevenue: number;
   totalExpenses: number;
   daysInMonth: number;
+  expenseItems?: Array<{
+    source: string;
+    amount: number;
+    date?: number | null;
+  }>;
 }
 
 function formatCurrency(value: number) {
@@ -18,11 +23,19 @@ export default function ProjectedCashFlow({
   forecastedRevenue,
   totalExpenses,
   daysInMonth,
+  expenseItems = [],
 }: ProjectedCashFlowProps) {
   // Generate daily projection data
   const data = useMemo(() => {
     const dailyRevenue = forecastedRevenue / daysInMonth;
-    const dailyExpenses = totalExpenses / daysInMonth;
+    const actualExpensesByDay = new Map<number, number>();
+    for (const item of expenseItems) {
+      if (item.source !== "actual" || !item.date) continue;
+      const day = new Date(item.date).getUTCDate();
+      actualExpensesByDay.set(day, (actualExpensesByDay.get(day) ?? 0) + item.amount);
+    }
+    const datedActualExpenses = Array.from(actualExpensesByDay.values()).reduce((sum, value) => sum + value, 0);
+    const dailyPlannedExpenses = Math.max(totalExpenses - datedActualExpenses, 0) / daysInMonth;
     
     const projectionData = [];
     let cumulativeRevenue = 0;
@@ -30,12 +43,16 @@ export default function ProjectedCashFlow({
     let cumulativeBalance = 0;
 
     for (let day = 1; day <= daysInMonth; day++) {
+      const actualExpenseForDay = actualExpensesByDay.get(day) ?? 0;
+      const expenseForDay = dailyPlannedExpenses + actualExpenseForDay;
       cumulativeRevenue += dailyRevenue;
-      cumulativeExpenses += dailyExpenses;
+      cumulativeExpenses += expenseForDay;
       cumulativeBalance = cumulativeRevenue - cumulativeExpenses;
 
       projectionData.push({
         day,
+        dailyExpense: Math.round(expenseForDay * 100) / 100,
+        actualExpense: Math.round(actualExpenseForDay * 100) / 100,
         revenue: Math.round(cumulativeRevenue * 100) / 100,
         expenses: Math.round(cumulativeExpenses * 100) / 100,
         balance: Math.round(cumulativeBalance * 100) / 100,
@@ -43,7 +60,7 @@ export default function ProjectedCashFlow({
     }
 
     return projectionData;
-  }, [forecastedRevenue, totalExpenses, daysInMonth]);
+  }, [forecastedRevenue, totalExpenses, daysInMonth, expenseItems]);
 
   const finalBalance = data[data.length - 1]?.balance || 0;
   const minBalance = Math.min(...data.map(d => d.balance));
@@ -183,6 +200,7 @@ export default function ProjectedCashFlow({
                 <tr className="border-b border-border">
                   <th className="text-left py-2 px-2 font-semibold">Dia</th>
                   <th className="text-right py-2 px-2 font-semibold">Receita Acum.</th>
+                  <th className="text-right py-2 px-2 font-semibold">Despesa Dia</th>
                   <th className="text-right py-2 px-2 font-semibold">Despesa Acum.</th>
                   <th className="text-right py-2 px-2 font-semibold">Saldo</th>
                 </tr>
@@ -195,6 +213,9 @@ export default function ProjectedCashFlow({
                       <td className="py-2 px-2">{row.day}</td>
                       <td className="text-right py-2 px-2 text-orange-600 font-medium">
                         {formatCurrency(row.revenue)}
+                      </td>
+                      <td className="text-right py-2 px-2 text-slate-600 font-medium">
+                        {formatCurrency(row.dailyExpense)}
                       </td>
                       <td className="text-right py-2 px-2 text-cyan-600 font-medium">
                         {formatCurrency(row.expenses)}

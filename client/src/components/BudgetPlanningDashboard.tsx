@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -59,7 +59,7 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
     { budgetId: budget?.id || 0 },
     { enabled: !!budget?.id }
   );
-  const metrics = metricsData ? { ...metricsData, budgetStatus: "positive" } : null;
+  const metrics = metricsData ?? null;
   const utils = trpc.useUtils();
 
   // Dynamic forecasted revenue from billing forecast
@@ -121,9 +121,11 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
   });
 
   // Calculations
-  const totalFixedCosts = useMemo(() => fixedCosts.reduce((sum: number, c: any) => sum + (c.amount || 0), 0), [fixedCosts]);
-  const totalVariableCosts = useMemo(() => variableCosts.reduce((sum: number, c: any) => sum + (c.amount || 0), 0), [variableCosts]);
-  const totalPersonalExpenses = useMemo(() => personalExpenses.reduce((sum: number, e: any) => sum + (e.amount || 0), 0), [personalExpenses]);
+  const totalFixedCosts = metrics?.totalFixedCosts ?? fixedCosts.reduce((sum: number, c: any) => sum + (c.amount || 0), 0);
+  const totalVariableCosts = metrics?.totalVariableCosts ?? variableCosts.reduce((sum: number, c: any) => sum + (c.amount || 0), 0);
+  const totalPersonalExpenses = metrics?.totalPersonalExpenses ?? personalExpenses.reduce((sum: number, e: any) => sum + (e.amount || 0), 0);
+  const importedActualExpenses = metrics?.importedActualExpenses ?? [];
+  const ignoredDuplicateExpenses = metrics?.ignoredDuplicateExpenses ?? [];
 
   // Auto-update budget when billing forecast changes
   const { mutate: autoUpdateRevenue } = trpc.budgetPlanning.updateBudget.useMutation({
@@ -245,14 +247,14 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
       </Card>
 
       {/* Expense Breakdown */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">Custos Fixos</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">{formatCurrency(totalFixedCosts)}</p>
-            <p className="text-xs text-muted-foreground mt-1">{fixedCosts.length} itens</p>
+            <p className="text-xs text-muted-foreground mt-1">Planejados + despesas reais classificadas</p>
           </CardContent>
         </Card>
 
@@ -262,7 +264,7 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">{formatCurrency(totalVariableCosts)}</p>
-            <p className="text-xs text-muted-foreground mt-1">{variableCosts.length} itens</p>
+            <p className="text-xs text-muted-foreground mt-1">Planejados + despesas reais classificadas</p>
           </CardContent>
         </Card>
 
@@ -272,7 +274,27 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">{formatCurrency(totalPersonalExpenses)}</p>
-            <p className="text-xs text-muted-foreground mt-1">{personalExpenses.length} itens</p>
+            <p className="text-xs text-muted-foreground mt-1">Planejadas + despesas reais classificadas</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-emerald-200 bg-emerald-50/40">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Despesas Integradas</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-emerald-700">{formatCurrency(metrics?.totalActualExpenses ?? 0)}</p>
+            <p className="text-xs text-muted-foreground mt-1">{importedActualExpenses.length} vindas da aba Despesas</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-amber-200 bg-amber-50/40">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Duplicidades Ignoradas</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-amber-700">{formatCurrency(metrics?.totalDuplicatedActualExpenses ?? 0)}</p>
+            <p className="text-xs text-muted-foreground mt-1">{ignoredDuplicateExpenses.length} itens nao contados duas vezes</p>
           </CardContent>
         </Card>
       </div>
@@ -375,6 +397,7 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
               forecastedRevenue={metrics.forecastedRevenue}
               totalExpenses={metrics.totalExpenses}
               daysInMonth={new Date(year, month, 0).getDate()}
+              expenseItems={metrics.expenseItems ?? []}
             />
           )}
         </TabsContent>
@@ -386,6 +409,8 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
               baseRevenue={metrics.forecastedRevenue}
               totalExpenses={metrics.totalExpenses}
               breakEvenPoint={metrics.breakEvenPoint}
+              actualExpenses={metrics.totalActualExpenses ?? 0}
+              duplicatedExpenses={metrics.totalDuplicatedActualExpenses ?? 0}
             />
           )}
         </TabsContent>

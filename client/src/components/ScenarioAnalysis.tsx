@@ -10,6 +10,8 @@ interface ScenarioAnalysisProps {
   baseRevenue: number;
   totalExpenses: number;
   breakEvenPoint: number;
+  actualExpenses?: number;
+  duplicatedExpenses?: number;
 }
 
 function formatCurrency(value: number) {
@@ -20,6 +22,8 @@ export default function ScenarioAnalysis({
   baseRevenue,
   totalExpenses,
   breakEvenPoint,
+  actualExpenses = 0,
+  duplicatedExpenses = 0,
 }: ScenarioAnalysisProps) {
   const [revenueVariation, setRevenueVariation] = useState(0); // percentage
   const [expenseVariation, setExpenseVariation] = useState(0); // percentage
@@ -27,10 +31,12 @@ export default function ScenarioAnalysis({
   // Calculate scenarios
   const scenarios = useMemo(() => {
     const variations = [-30, -20, -10, 0, 10, 20, 30];
+    const committedExpenses = Math.min(actualExpenses, totalExpenses);
+    const flexibleExpenses = Math.max(totalExpenses - committedExpenses, 0);
     
     return variations.map(variation => {
       const adjustedRevenue = baseRevenue * (1 + variation / 100);
-      const adjustedExpenses = totalExpenses * (1 + expenseVariation / 100);
+      const adjustedExpenses = committedExpenses + (flexibleExpenses * (1 + expenseVariation / 100));
       const profit = adjustedRevenue - adjustedExpenses;
       const profitMargin = adjustedRevenue > 0 ? (profit / adjustedRevenue) * 100 : 0;
       const status = profit > 0 ? "positive" : profit > -1000 ? "warning" : "negative";
@@ -44,7 +50,7 @@ export default function ScenarioAnalysis({
         status,
       };
     });
-  }, [baseRevenue, totalExpenses, expenseVariation]);
+  }, [baseRevenue, totalExpenses, actualExpenses, expenseVariation]);
 
   const currentScenario = scenarios.find(s => s.variation === 0);
   const selectedScenario = scenarios.find(s => s.variation === revenueVariation);
@@ -155,6 +161,36 @@ export default function ScenarioAnalysis({
           </Card>
         </div>
       )}
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Despesas Reais Travadas</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-slate-700">{formatCurrency(actualExpenses)}</p>
+            <p className="text-xs text-muted-foreground mt-1">Ja registradas no mes; nao variam no simulador</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Despesas Projetadas Flexiveis</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-blue-600">{formatCurrency(Math.max(totalExpenses - actualExpenses, 0))}</p>
+            <p className="text-xs text-muted-foreground mt-1">Parte afetada pela variacao de despesas</p>
+          </CardContent>
+        </Card>
+        <Card className="border-amber-200 bg-amber-50/40">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Duplicidade Evitada</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-amber-700">{formatCurrency(duplicatedExpenses)}</p>
+            <p className="text-xs text-muted-foreground mt-1">Despesas reais semelhantes a custos ja planejados</p>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Scenarios Chart */}
       <Card>
