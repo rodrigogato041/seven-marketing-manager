@@ -12,7 +12,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Phone, Mail, MessageCircle, FileText, Plus, Trash2, Download, CheckCircle, Clock, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MessageCircle, FileText, Plus, Trash2, Download, CheckCircle, Clock, AlertTriangle, Undo2 } from "lucide-react";
 import { useLocation, useParams } from "wouter";
 import { toast } from "sonner";
 
@@ -157,7 +157,26 @@ export default function ClientDetailPage() {
   const createPayment = trpc.payments.create.useMutation({
     onSuccess: () => { utils.payments.list.invalidate(); setPayOpen(false); toast.success("Pagamento registrado!"); },
   });
-  const updatePayment = trpc.payments.update.useMutation({ onSuccess: () => utils.payments.list.invalidate() });
+  const confirmPayment = trpc.payments.confirm.useMutation({
+    onSuccess: () => {
+      utils.payments.list.invalidate();
+      utils.payments.billingForecast.invalidate();
+      utils.dashboard.stats.invalidate();
+      utils.dashboard.monthlyRevenue.invalidate();
+      toast.success("Pagamento confirmado!");
+    },
+    onError: () => toast.error("Erro ao confirmar pagamento"),
+  });
+  const undoPayment = trpc.payments.undo.useMutation({
+    onSuccess: () => {
+      utils.payments.list.invalidate();
+      utils.payments.billingForecast.invalidate();
+      utils.dashboard.stats.invalidate();
+      utils.dashboard.monthlyRevenue.invalidate();
+      toast.success("Baixa desfeita. Pagamento voltou para pendente.");
+    },
+    onError: () => toast.error("Erro ao desfazer baixa"),
+  });
   const deletePayment = trpc.payments.delete.useMutation({ onSuccess: () => { utils.payments.list.invalidate(); toast.success("Pagamento removido!"); } });
 
   // Document upload
@@ -285,18 +304,43 @@ export default function ClientDetailPage() {
                     const st = paymentStatusMap[p.status] || paymentStatusMap.pending;
                     const StIcon = st.icon;
                     return (
-                      <div key={p.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-                        <div className="flex items-center gap-3">
+                      <div key={p.id} className="flex flex-col gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-center gap-3 min-w-0">
                           <StIcon className={`h-4 w-4 ${st.color}`} />
-                          <div>
-                            <p className="text-sm font-medium">{formatCurrency(p.amount)}</p>
-                            <p className="text-xs text-muted-foreground">Vencimento: {formatDate(p.dueDate)}{p.description ? ` - ${p.description}` : ""}</p>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-sm font-medium">{formatCurrency(p.amount)}</p>
+                              <Badge variant="outline" className="text-[10px]">{st.label}</Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Vencimento: {formatDate(p.dueDate)}
+                              {p.status === "paid" && p.paidDate ? ` - Pago em: ${formatDate(p.paidDate)}` : ""}
+                              {p.description ? ` - ${p.description}` : ""}
+                            </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {p.status !== "paid" && (
-                            <Button variant="ghost" size="sm" className="text-xs text-emerald-600" onClick={() => updatePayment.mutate({ id: p.id, status: "paid", paidDate: Date.now() })}>
-                              Marcar Pago
+                        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                          {p.status === "paid" ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 text-xs text-amber-700 border-amber-200 hover:bg-amber-50"
+                              onClick={() => undoPayment.mutate({ id: p.id })}
+                              disabled={undoPayment.isPending}
+                            >
+                              <Undo2 className="h-3.5 w-3.5 mr-1" />
+                              Desfazer baixa
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 text-xs text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                              onClick={() => confirmPayment.mutate({ id: p.id })}
+                              disabled={confirmPayment.isPending}
+                            >
+                              <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                              Confirmar pagamento
                             </Button>
                           )}
                           <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deletePayment.mutate({ id: p.id })}>
