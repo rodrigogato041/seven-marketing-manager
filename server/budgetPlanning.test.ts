@@ -269,5 +269,34 @@ describe("Budget Planning System", () => {
       expect(parseFloat(metrics.totalActualExpenses.toString())).toBeGreaterThanOrEqual(120);
       expect(parseFloat(metrics.totalFixedCosts.toString())).toBeGreaterThanOrEqual(420);
     });
+
+    it("should ignore rent duplicates even when the real expense has extra words and a close value", async () => {
+      const year = 2200 + Math.floor(Math.random() * 1000);
+      const period = await db.getOrCreateMonthlyPeriod(year, 1);
+      const budget = await db.getOrCreateMonthlyBudget(period.id);
+      const testBudgetId = budget.id;
+      const suffix = `dedupe-${Date.now()}`;
+
+      await db.updateMonthlyBudget(testBudgetId, { forecastedRevenue: 5000 });
+      await db.createFixedCost({
+        budgetId: testBudgetId,
+        description: `Aluguel ${suffix}`,
+        amount: "700",
+        category: "Estrutura",
+        isRecurring: true,
+      });
+      await db.createExpense({
+        amount: "710",
+        category: "Moradia",
+        description: `Aluguel casa ${suffix}`,
+        date: new Date(year, 0, 10).getTime(),
+      });
+
+      const metrics = await db.calculateBudgetMetrics(testBudgetId, 0);
+
+      expect(parseFloat(metrics.totalFixedCosts.toString())).toBe(700);
+      expect(parseFloat(metrics.totalActualExpenses.toString())).toBe(0);
+      expect(parseFloat(metrics.totalDuplicatedActualExpenses.toString())).toBe(710);
+    });
   });
 });

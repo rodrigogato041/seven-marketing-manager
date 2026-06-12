@@ -57,7 +57,7 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
   );
   const { data: metricsData } = trpc.budgetPlanning.getMetrics.useQuery(
     { budgetId: budget?.id || 0 },
-    { enabled: !!budget?.id }
+    { enabled: !!budget?.id, refetchInterval: 3000, refetchOnWindowFocus: true }
   );
   const metrics = metricsData ?? null;
   const utils = trpc.useUtils();
@@ -69,28 +69,38 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
   const updateBudget = trpc.budgetPlanning.updateBudget.useMutation({
     onSuccess: () => toast.success("Faturamento atualizado!"),
   });
-  const calculateMetrics = trpc.budgetPlanning.calculateMetrics.useMutation({
-    onSuccess: () => toast.success("Métricas recalculadas!"),
-  });
+  const calculateMetrics = trpc.budgetPlanning.calculateMetrics.useMutation();
   const deleteFixedCost = trpc.budgetPlanning.deleteFixedCost.useMutation({
-    onSuccess: () => toast.success("Custo fixo removido!"),
+    onSuccess: async () => {
+      await refreshPlanning();
+      toast.success("Custo fixo removido!");
+    },
   });
   const deleteVariableCost = trpc.budgetPlanning.deleteVariableCost.useMutation({
-    onSuccess: () => toast.success("Custo variável removido!"),
+    onSuccess: async () => {
+      await refreshPlanning();
+      toast.success("Custo variavel removido!");
+    },
   });
   const deletePersonalExpense = trpc.budgetPlanning.deletePersonalExpense.useMutation({
-    onSuccess: () => toast.success("Despesa pessoal removida!"),
+    onSuccess: async () => {
+      await refreshPlanning();
+      toast.success("Despesa pessoal removida!");
+    },
   });
   const refreshPlanning = async () => {
     if (!budget?.id) return;
+    const budgetId = budget.id;
     await Promise.all([
-      utils.budgetPlanning.getFixedCosts.invalidate({ budgetId: budget.id }),
-      utils.budgetPlanning.getVariableCosts.invalidate({ budgetId: budget.id }),
-      utils.budgetPlanning.getPersonalExpenses.invalidate({ budgetId: budget.id }),
-      utils.budgetPlanning.getMetrics.invalidate({ budgetId: budget.id }),
+      utils.budgetPlanning.getFixedCosts.invalidate({ budgetId }),
+      utils.budgetPlanning.getVariableCosts.invalidate({ budgetId }),
+      utils.budgetPlanning.getPersonalExpenses.invalidate({ budgetId }),
+      utils.expenses.list.invalidate(),
       utils.budgetAlerts.checkBudgetAlerts.invalidate({ year, month }),
     ]);
-    calculateMetrics.mutate({ budgetId: budget.id });
+    const freshMetrics = await calculateMetrics.mutateAsync({ budgetId });
+    utils.budgetPlanning.getMetrics.setData({ budgetId }, freshMetrics);
+    await utils.budgetPlanning.getMetrics.invalidate({ budgetId });
   };
   const createFixedCost = trpc.budgetPlanning.createFixedCost.useMutation({
     onSuccess: async () => {
@@ -129,9 +139,9 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
 
   // Auto-update budget when billing forecast changes
   const { mutate: autoUpdateRevenue } = trpc.budgetPlanning.updateBudget.useMutation({
-    onSuccess: () => {
+    onSuccess: async () => {
       if (budget?.id) {
-        calculateMetrics.mutate({ budgetId: budget.id });
+        await refreshPlanning();
       }
     },
   });

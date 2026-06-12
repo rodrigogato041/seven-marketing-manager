@@ -56,6 +56,10 @@ export default function FinancialPage() {
   const { data: collabsList } = trpc.collaborators.list.useQuery();
 
   const utils = trpc.useUtils();
+  const refreshPlanningMetrics = () => {
+    utils.budgetPlanning.getMetrics.invalidate();
+    utils.budgetAlerts.checkBudgetAlerts.invalidate({ year: selectedYear, month: selectedMonth });
+  };
 
   // Mutations
   const confirmPayment = trpc.payments.confirm.useMutation({
@@ -64,6 +68,7 @@ export default function FinancialPage() {
       utils.payments.list.invalidate();
       utils.dashboard.stats.invalidate();
       utils.dashboard.monthlyRevenue.invalidate();
+      refreshPlanningMetrics();
       toast.success("Pagamento confirmado!");
     },
     onError: () => toast.error("Erro ao confirmar pagamento"),
@@ -75,6 +80,7 @@ export default function FinancialPage() {
       utils.payments.list.invalidate();
       utils.dashboard.stats.invalidate();
       utils.dashboard.monthlyRevenue.invalidate();
+      refreshPlanningMetrics();
       toast.success("Pagamento desfeito! Status voltou para pendente.");
     },
     onError: () => toast.error("Erro ao desfazer pagamento"),
@@ -86,6 +92,7 @@ export default function FinancialPage() {
       utils.payments.list.invalidate();
       utils.dashboard.stats.invalidate();
       utils.dashboard.monthlyRevenue.invalidate();
+      refreshPlanningMetrics();
       toast.success("Pagamento excluído!");
     },
   });
@@ -98,6 +105,7 @@ export default function FinancialPage() {
       utils.expenses.list.invalidate();
       utils.dashboard.stats.invalidate();
       utils.dashboard.monthlyExpenses.invalidate();
+      refreshPlanningMetrics();
       setExpOpen(false);
       toast.success("Despesa registrada!");
     },
@@ -107,6 +115,7 @@ export default function FinancialPage() {
       utils.expenses.list.invalidate();
       utils.dashboard.stats.invalidate();
       utils.dashboard.monthlyExpenses.invalidate();
+      refreshPlanningMetrics();
       toast.success("Despesa removida!");
     },
   });

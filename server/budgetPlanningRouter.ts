@@ -16,7 +16,6 @@ import {
   updatePersonalExpense,
   deletePersonalExpense,
   calculateBudgetMetrics,
-  getBudgetCalculations,
   getOrCreateMonthlyPeriod,
   listCollaborators,
 } from "./db";
@@ -235,9 +234,9 @@ export const budgetPlanningRouter = router({
   getMetrics: protectedProcedure
     .input(z.object({ budgetId: z.number() }))
     .query(async ({ input }) => {
-      const calcs = await getBudgetCalculations(input.budgetId);
-      if (!calcs.length) return null;
-      const calc = calcs[0];
+      const collaborators = await listCollaborators();
+      const collaboratorCosts = collaborators.reduce((sum: number, c: any) => sum + parseFloat(c.monthlyCost.toString()), 0);
+      const calc = await calculateBudgetMetrics(input.budgetId, collaboratorCosts);
       return {
         ...calc,
         forecastedRevenue: parseFloat(calc.forecastedRevenue.toString()),

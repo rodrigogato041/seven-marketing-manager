@@ -817,23 +817,116 @@ function normalizeBudgetText(value: unknown) {
     .trim();
 }
 
+const BUDGET_STOP_WORDS = new Set([
+  "sem",
+  "descricao",
+  "despesa",
+  "despesas",
+  "custo",
+  "custos",
+  "fixo",
+  "fixos",
+  "variavel",
+  "variaveis",
+  "mensal",
+  "mes",
+  "pagamento",
+  "conta",
+  "meu",
+  "minha",
+  "casa",
+  "empresa",
+  "servico",
+  "servicos",
+  "outro",
+  "outros",
+  "para",
+  "com",
+  "por",
+  "uma",
+  "um",
+  "de",
+  "da",
+  "do",
+  "das",
+  "dos",
+  "a",
+  "o",
+  "as",
+  "os",
+]);
+
+const BUDGET_TOKEN_ALIASES: Record<string, string> = {
+  alugueis: "aluguel",
+  locacao: "aluguel",
+  aluguel: "aluguel",
+  imovel: "aluguel",
+  condominio: "condominio",
+  luz: "energia",
+  eletrica: "energia",
+  energia: "energia",
+  agua: "agua",
+  saneamento: "agua",
+  internet: "internet",
+  fibra: "internet",
+  wifi: "internet",
+  telefone: "telefone",
+  celular: "telefone",
+  software: "software",
+  sistema: "software",
+  app: "software",
+  assinatura: "assinatura",
+  assinaturas: "assinatura",
+  adobe: "adobe",
+  canva: "canva",
+  contador: "contabilidade",
+  contabilidade: "contabilidade",
+  salario: "salario",
+  salarios: "salario",
+  colaborador: "colaborador",
+  colaboradores: "colaborador",
+  freelancer: "freelancer",
+  trafego: "trafego",
+  anuncios: "trafego",
+  marketing: "marketing",
+  mercado: "mercado",
+  alimentacao: "alimentacao",
+  emprestimo: "emprestimo",
+  financiamento: "emprestimo",
+};
+
+function budgetTokens(value: string) {
+  return normalizeBudgetText(value)
+    .split(" ")
+    .map(token => BUDGET_TOKEN_ALIASES[token] ?? token)
+    .filter(token => token.length > 2 && !BUDGET_STOP_WORDS.has(token));
+}
+
 function textSimilarity(a: string, b: string) {
-  const left = new Set(normalizeBudgetText(a).split(" ").filter(token => token.length > 2));
-  const right = new Set(normalizeBudgetText(b).split(" ").filter(token => token.length > 2));
+  const left = new Set(budgetTokens(a));
+  const right = new Set(budgetTokens(b));
   if (!left.size || !right.size) return 0;
   const shared = Array.from(left).filter(token => right.has(token)).length;
   return shared / Math.min(left.size, right.size);
 }
 
+function hasSharedBudgetMeaning(a: string, b: string) {
+  const left = new Set(budgetTokens(a));
+  const right = new Set(budgetTokens(b));
+  if (!left.size || !right.size) return false;
+  return Array.from(left).some(token => right.has(token));
+}
+
 function isSameBudgetExpense(a: ReturnType<typeof toBudgetExpenseItem>, b: ReturnType<typeof toBudgetExpenseItem>) {
   const amountDiff = Math.abs(a.amount - b.amount);
-  const amountTolerance = Math.max(1, Math.min(a.amount, b.amount) * 0.02);
+  const amountTolerance = Math.max(2, Math.min(a.amount, b.amount) * 0.05);
   if (amountDiff > amountTolerance) return false;
   const aText = `${a.description} ${a.category}`;
   const bText = `${b.description} ${b.category}`;
   const normalizedA = normalizeBudgetText(aText);
   const normalizedB = normalizeBudgetText(bText);
-  return normalizedA.includes(normalizedB) || normalizedB.includes(normalizedA) || textSimilarity(aText, bText) >= 0.5;
+  if (normalizedA.includes(normalizedB) || normalizedB.includes(normalizedA)) return true;
+  return hasSharedBudgetMeaning(aText, bText) && textSimilarity(aText, bText) >= 0.5;
 }
 
 function classifyActualExpense(expense: LocalRecord): "fixed" | "variable" | "personal" {
