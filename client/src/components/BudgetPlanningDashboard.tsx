@@ -26,6 +26,75 @@ function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 }
 
+type BudgetExpenseType = "fixed" | "variable" | "personal" | "collaborator";
+
+type BudgetExpenseItem = {
+  id: number;
+  source: string;
+  type: BudgetExpenseType;
+  description: string;
+  category: string;
+  amount: number;
+  date?: number | null;
+  duplicateOf?: string | null;
+};
+
+function formatBudgetDate(date?: number | null) {
+  if (!date) return "Sem data";
+  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(date));
+}
+
+function ImportedExpenseList({
+  title,
+  description,
+  emptyMessage,
+  items,
+  duplicate = false,
+}: {
+  title: string;
+  description: string;
+  emptyMessage: string;
+  items: BudgetExpenseItem[];
+  duplicate?: boolean;
+}) {
+  const rowClass = duplicate ? "border-amber-200 bg-amber-50/60" : "border-emerald-200 bg-emerald-50/60";
+  const amountClass = duplicate ? "text-amber-700" : "text-emerald-700";
+
+  return (
+    <div className="space-y-2 pt-2">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold">{title}</p>
+          <p className="text-xs text-muted-foreground">{description}</p>
+        </div>
+        <Badge variant="outline">{items.length}</Badge>
+      </div>
+      {items.length === 0 ? (
+        <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">{emptyMessage}</p>
+      ) : (
+        <div className="space-y-2">
+          {items.map(item => (
+            <div key={`${item.source}-${item.id}-${item.duplicateOf ?? "accepted"}`} className={`flex items-center justify-between gap-4 rounded-md border p-3 ${rowClass}`}>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium">{item.description}</p>
+                  <Badge variant="outline">{item.category}</Badge>
+                  <Badge variant="secondary">Aba Despesas</Badge>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {formatBudgetDate(item.date)}
+                  {duplicate ? " - Ignorada por duplicidade" : " - Contabilizada nesta coluna"}
+                </p>
+              </div>
+              <p className={`shrink-0 font-bold ${amountClass}`}>{formatCurrency(item.amount)}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface BudgetPlanningDashboardProps {
   year: number;
   month: number;
@@ -134,8 +203,14 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
   const totalFixedCosts = metrics?.totalFixedCosts ?? fixedCosts.reduce((sum: number, c: any) => sum + (c.amount || 0), 0);
   const totalVariableCosts = metrics?.totalVariableCosts ?? variableCosts.reduce((sum: number, c: any) => sum + (c.amount || 0), 0);
   const totalPersonalExpenses = metrics?.totalPersonalExpenses ?? personalExpenses.reduce((sum: number, e: any) => sum + (e.amount || 0), 0);
-  const importedActualExpenses = metrics?.importedActualExpenses ?? [];
-  const ignoredDuplicateExpenses = metrics?.ignoredDuplicateExpenses ?? [];
+  const importedActualExpenses = (metrics?.importedActualExpenses ?? []) as BudgetExpenseItem[];
+  const ignoredDuplicateExpenses = (metrics?.ignoredDuplicateExpenses ?? []) as BudgetExpenseItem[];
+  const actualFixedExpenses = importedActualExpenses.filter(item => item.type === "fixed");
+  const actualVariableExpenses = importedActualExpenses.filter(item => item.type === "variable");
+  const actualPersonalExpenses = importedActualExpenses.filter(item => item.type === "personal");
+  const duplicatedFixedExpenses = ignoredDuplicateExpenses.filter(item => item.type === "fixed");
+  const duplicatedVariableExpenses = ignoredDuplicateExpenses.filter(item => item.type === "variable");
+  const duplicatedPersonalExpenses = ignoredDuplicateExpenses.filter(item => item.type === "personal");
 
   // Auto-update budget when billing forecast changes
   const { mutate: autoUpdateRevenue } = trpc.budgetPlanning.updateBudget.useMutation({
@@ -325,25 +400,43 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
             <Plus className="h-4 w-4 mr-2" /> Adicionar Custo Fixo
           </Button>
           <div className="space-y-2">
-            {fixedCosts.map(cost => (
-              <Card key={cost.id} className="flex items-center justify-between p-4">
-                <div>
-                  <p className="font-medium">{cost.description}</p>
-                  <p className="text-sm text-muted-foreground">{cost.category}</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <p className="font-bold">{formatCurrency(cost.amount)}</p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => deleteFixedCost.mutate({ id: cost.id })}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </Card>
-            ))}
+            <p className="text-sm font-semibold">Custos cadastrados manualmente</p>
+            {fixedCosts.length === 0 ? (
+              <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">Nenhum custo fixo manual cadastrado.</p>
+            ) : (
+              fixedCosts.map(cost => (
+                <Card key={cost.id} className="flex items-center justify-between p-4">
+                  <div>
+                    <p className="font-medium">{cost.description}</p>
+                    <p className="text-sm text-muted-foreground">{cost.category}</p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <p className="font-bold">{formatCurrency(cost.amount)}</p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteFixedCost.mutate({ id: cost.id })}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </Card>
+              ))
+            )}
           </div>
+          <ImportedExpenseList
+            title="Despesas classificadas como custo fixo"
+            description="Itens registrados na aba Despesas que entraram automaticamente nesta coluna."
+            emptyMessage="Nenhuma despesa da aba Despesas foi classificada como custo fixo neste mes."
+            items={actualFixedExpenses}
+          />
+          <ImportedExpenseList
+            title="Duplicidades ignoradas em custo fixo"
+            description="Itens parecidos com custos ja considerados e que nao entraram duas vezes no total."
+            emptyMessage="Nenhuma duplicidade ignorada nesta coluna."
+            items={duplicatedFixedExpenses}
+            duplicate
+          />
         </TabsContent>
 
         {/* Variable Costs Tab */}
@@ -352,25 +445,43 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
             <Plus className="h-4 w-4 mr-2" /> Adicionar Custo Variável
           </Button>
           <div className="space-y-2">
-            {variableCosts.map(cost => (
-              <Card key={cost.id} className="flex items-center justify-between p-4">
-                <div>
-                  <p className="font-medium">{cost.description}</p>
-                  <p className="text-sm text-muted-foreground">{cost.category}</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <p className="font-bold">{formatCurrency(cost.amount)}</p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => deleteVariableCost.mutate({ id: cost.id })}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </Card>
-            ))}
+            <p className="text-sm font-semibold">Custos cadastrados manualmente</p>
+            {variableCosts.length === 0 ? (
+              <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">Nenhum custo variavel manual cadastrado.</p>
+            ) : (
+              variableCosts.map(cost => (
+                <Card key={cost.id} className="flex items-center justify-between p-4">
+                  <div>
+                    <p className="font-medium">{cost.description}</p>
+                    <p className="text-sm text-muted-foreground">{cost.category}</p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <p className="font-bold">{formatCurrency(cost.amount)}</p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteVariableCost.mutate({ id: cost.id })}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </Card>
+              ))
+            )}
           </div>
+          <ImportedExpenseList
+            title="Despesas classificadas como custo variavel"
+            description="Itens registrados na aba Despesas que entraram automaticamente nesta coluna."
+            emptyMessage="Nenhuma despesa da aba Despesas foi classificada como custo variavel neste mes."
+            items={actualVariableExpenses}
+          />
+          <ImportedExpenseList
+            title="Duplicidades ignoradas em custo variavel"
+            description="Itens parecidos com custos ja considerados e que nao entraram duas vezes no total."
+            emptyMessage="Nenhuma duplicidade ignorada nesta coluna."
+            items={duplicatedVariableExpenses}
+            duplicate
+          />
         </TabsContent>
 
         {/* Personal Expenses Tab */}
@@ -379,25 +490,43 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
             <Plus className="h-4 w-4 mr-2" /> Adicionar Despesa Pessoal
           </Button>
           <div className="space-y-2">
-            {personalExpenses.map(expense => (
-              <Card key={expense.id} className="flex items-center justify-between p-4">
-                <div>
-                  <p className="font-medium">{expense.description}</p>
-                  <p className="text-sm text-muted-foreground">{expense.category}</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <p className="font-bold">{formatCurrency(expense.amount)}</p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => deletePersonalExpense.mutate({ id: expense.id })}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </Card>
-            ))}
+            <p className="text-sm font-semibold">Despesas cadastradas manualmente</p>
+            {personalExpenses.length === 0 ? (
+              <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">Nenhuma despesa pessoal manual cadastrada.</p>
+            ) : (
+              personalExpenses.map(expense => (
+                <Card key={expense.id} className="flex items-center justify-between p-4">
+                  <div>
+                    <p className="font-medium">{expense.description}</p>
+                    <p className="text-sm text-muted-foreground">{expense.category}</p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <p className="font-bold">{formatCurrency(expense.amount)}</p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deletePersonalExpense.mutate({ id: expense.id })}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </Card>
+              ))
+            )}
           </div>
+          <ImportedExpenseList
+            title="Despesas classificadas como despesa pessoal"
+            description="Itens registrados na aba Despesas que entraram automaticamente nesta coluna."
+            emptyMessage="Nenhuma despesa da aba Despesas foi classificada como despesa pessoal neste mes."
+            items={actualPersonalExpenses}
+          />
+          <ImportedExpenseList
+            title="Duplicidades ignoradas em despesas pessoais"
+            description="Itens parecidos com despesas ja consideradas e que nao entraram duas vezes no total."
+            emptyMessage="Nenhuma duplicidade ignorada nesta coluna."
+            items={duplicatedPersonalExpenses}
+            duplicate
+          />
         </TabsContent>
 
         {/* Projected Cash Flow Tab */}
