@@ -19,6 +19,22 @@ function formatCurrency(value: string | number | null) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(num);
 }
 
+function parseDateInput(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return Date.UTC(year, month - 1, day);
+}
+
+function formatInvestmentDate(value: number) {
+  if (!Number.isFinite(value) || value < Date.UTC(2000, 0, 1)) return "Data inválida";
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(value));
+}
+
 export default function InvestmentsTab() {
   const [isOpen, setIsOpen] = useState(false);
   const [form, setForm] = useState({ name: "", type: "fixed" as "fixed" | "variable", amount: "", description: "", date: "" });
@@ -52,12 +68,17 @@ export default function InvestmentsTab() {
       toast.error("Preencha todos os campos obrigatórios");
       return;
     }
+    const investmentDate = parseDateInput(form.date);
+    if (!investmentDate) {
+      toast.error("Informe uma data válida");
+      return;
+    }
     createMut.mutate({
       name: form.name,
       type: form.type,
       amount: form.amount,
       description: form.description,
-      date: parseInt(form.date),
+      date: investmentDate,
     });
   };
 
@@ -130,7 +151,7 @@ export default function InvestmentsTab() {
                         </Badge>
                       </td>
                       <td className="py-3 px-4 text-right font-semibold">{formatCurrency(inv.amount)}</td>
-                      <td className="py-3 px-4">{new Date(inv.date).toLocaleDateString("pt-BR")}</td>
+                      <td className="py-3 px-4">{formatInvestmentDate(inv.date)}</td>
                       <td className="py-3 px-4 text-muted-foreground">{inv.description || "-"}</td>
                       <td className="py-3 px-4 text-center">
                         <Button
