@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Users, DollarSign, ListTodo, TrendingUp, BarChart3,
   CalendarCheck, CheckCircle2, Clock, AlertCircle, Target, Wallet, CreditCard,
-  Download, FileSpreadsheet, FileText,
+  Download, FileSpreadsheet, FileText, Eye, EyeOff,
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip } from "recharts";
 import PremiumLineChart from "@/components/PremiumLineChart";
@@ -14,6 +14,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
+import { useFinancialPrivacy } from "@/lib/financialPrivacy";
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -48,6 +49,7 @@ const CHART_LINES = [
 
 
 export default function Home() {
+  const { hideFinancialValues, toggleFinancialValues, financialValue } = useFinancialPrivacy();
   const { data: stats, isLoading: loadingStats } = trpc.dashboard.stats.useQuery();
   const { data: services } = trpc.dashboard.topServices.useQuery();
   const { data: alerts } = trpc.dashboard.paymentAlerts.useQuery();
@@ -172,32 +174,43 @@ export default function Home() {
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
           <p className="text-muted-foreground text-sm mt-1">Visão geral da Seven Marketing</p>
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="gap-2">
-              <Download className="h-4 w-4" /> Exportar Dados
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={exportCSV} className="gap-2">
-              <FileSpreadsheet className="h-4 w-4" /> Exportar CSV
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={exportExcel} className="gap-2">
-              <FileSpreadsheet className="h-4 w-4" /> Exportar Excel (.xls)
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={exportPDF} className="gap-2">
-              <FileText className="h-4 w-4" /> Exportar PDF
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={toggleFinancialValues}
+            aria-label={hideFinancialValues ? "Mostrar valores financeiros" : "Ocultar valores financeiros"}
+            title={hideFinancialValues ? "Mostrar valores financeiros" : "Ocultar valores financeiros"}
+          >
+            {hideFinancialValues ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <Download className="h-4 w-4" /> Exportar Dados
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={exportCSV} className="gap-2">
+                <FileSpreadsheet className="h-4 w-4" /> Exportar CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={exportExcel} className="gap-2">
+                <FileSpreadsheet className="h-4 w-4" /> Exportar Excel (.xls)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={exportPDF} className="gap-2">
+                <FileText className="h-4 w-4" /> Exportar PDF
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard title="Clientes Ativos" value={loadingStats ? "..." : String(stats?.activeClients ?? 0)} icon={Users} accent="from-orange-500 to-amber-500" />
         <KPICard title="Tarefas Pendentes" value={loadingStats ? "..." : String(stats?.pendingTasks ?? 0)} icon={ListTodo} accent="from-blue-500 to-indigo-500" />
-        <KPICard title="Receita Total" value={loadingStats ? "..." : formatCurrency(stats?.totalRevenue ?? 0)} icon={DollarSign} accent="from-emerald-500 to-green-500" />
-        <KPICard title="Lucro Líquido" value={loadingStats ? "..." : formatCurrency(profit)} icon={TrendingUp} accent="from-violet-500 to-purple-500" />
+        <KPICard title="Receita Total" value={loadingStats ? "..." : financialValue(formatCurrency(stats?.totalRevenue ?? 0))} icon={DollarSign} accent="from-emerald-500 to-green-500" />
+        <KPICard title="Lucro Líquido" value={loadingStats ? "..." : financialValue(formatCurrency(profit))} icon={TrendingUp} accent="from-violet-500 to-purple-500" />
       </div>
 
       {/* Billing Forecast */}
@@ -210,7 +223,7 @@ export default function Home() {
               </div>
               <div>
                 <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Previsto do Mês</p>
-                <p className="text-lg font-bold text-foreground">{formatCurrency(forecast.predicted)}</p>
+                <p className="text-lg font-bold text-foreground">{financialValue(formatCurrency(forecast.predicted))}</p>
               </div>
             </CardContent>
           </Card>
@@ -221,7 +234,7 @@ export default function Home() {
               </div>
               <div>
                 <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Recebido do Mês</p>
-                <p className="text-lg font-bold text-emerald-600">{formatCurrency(forecast.received)}</p>
+                <p className="text-lg font-bold text-emerald-600">{financialValue(formatCurrency(forecast.received))}</p>
               </div>
             </CardContent>
           </Card>
@@ -232,7 +245,7 @@ export default function Home() {
               </div>
               <div>
                 <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Pendente do Mês</p>
-                <p className="text-lg font-bold text-amber-600">{formatCurrency(forecast.pending)}</p>
+                <p className="text-lg font-bold text-amber-600">{financialValue(formatCurrency(forecast.pending))}</p>
               </div>
             </CardContent>
           </Card>
@@ -282,7 +295,7 @@ export default function Home() {
                         <span className="text-red-700 font-medium">{p.companyName}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-red-800">{formatCurrency(parseFloat(p.amount))}</span>
+                        <span className="font-semibold text-red-800">{financialValue(formatCurrency(parseFloat(p.amount)))}</span>
                         <Badge variant="destructive" className="text-[10px] px-1.5">
                           Vencido {formatDateUTC(p.dueDate)}
                         </Badge>
@@ -313,7 +326,7 @@ export default function Home() {
                         <span className="text-amber-700 font-medium">{p.companyName}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-amber-800">{formatCurrency(parseFloat(p.amount))}</span>
+                        <span className="font-semibold text-amber-800">{financialValue(formatCurrency(parseFloat(p.amount)))}</span>
                         <Badge className="text-[10px] px-1.5 bg-amber-100 text-amber-700 border-amber-300">
                           Vence {formatDateUTC(p.dueDate)}
                         </Badge>
@@ -367,7 +380,7 @@ export default function Home() {
                 <p className="text-xs text-muted-foreground mt-1">Tarefas Pendentes</p>
               </div>
               <div className="text-center p-3 rounded-lg bg-background/80">
-                <p className="text-2xl font-bold text-emerald-600">{formatCurrency(weekly.weeklyRevenue)}</p>
+                <p className="text-2xl font-bold text-emerald-600">{financialValue(formatCurrency(weekly.weeklyRevenue))}</p>
                 <p className="text-xs text-muted-foreground mt-1">Receita da Semana</p>
               </div>
             </div>

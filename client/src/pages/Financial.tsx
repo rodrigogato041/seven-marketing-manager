@@ -15,7 +15,7 @@ import {
 import {
   Plus, TrendingUp, TrendingDown, DollarSign, Trash2,
   CheckCircle, Clock, AlertTriangle, Undo2, Target, Wallet, CreditCard,
-  ChevronLeft, ChevronRight, BarChart3,
+  ChevronLeft, ChevronRight, BarChart3, Eye, EyeOff,
 } from "lucide-react";
 import PremiumLineChart from "@/components/PremiumLineChart";
 import ExpensesPieChart from "@/components/ExpensesPieChart";
@@ -24,6 +24,7 @@ import CreditCardTab from "@/components/CreditCardTab";
 import { MonthlyPeriodSelector } from "@/components/MonthlyPeriodSelector";
 import BudgetPlanningDashboard from "@/components/BudgetPlanningDashboard";
 import { toast } from "sonner";
+import { useFinancialPrivacy } from "@/lib/financialPrivacy";
 
 function formatCurrency(value: string | number | null) {
   const num = typeof value === "string" ? parseFloat(value) : (value ?? 0);
@@ -37,6 +38,7 @@ const statusConfig = {
 };
 
 export default function FinancialPage() {
+  const { hideFinancialValues, toggleFinancialValues, financialValue } = useFinancialPrivacy();
   const now = new Date();
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
@@ -163,9 +165,20 @@ export default function FinancialPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Financeiro</h1>
-        <p className="text-muted-foreground text-sm mt-1">Controle financeiro completo com previsibilidade de receita</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Financeiro</h1>
+          <p className="text-muted-foreground text-sm mt-1">Controle financeiro completo com previsibilidade de receita</p>
+        </div>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={toggleFinancialValues}
+          aria-label={hideFinancialValues ? "Mostrar valores financeiros" : "Ocultar valores financeiros"}
+          title={hideFinancialValues ? "Mostrar valores financeiros" : "Ocultar valores financeiros"}
+        >
+          {hideFinancialValues ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </Button>
       </div>
 
       {/* Monthly Period Selector */}
@@ -205,7 +218,7 @@ export default function FinancialPage() {
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Faturamento Previsto</p>
               <p className="text-xl font-bold text-foreground">
-                {loadingForecast ? "..." : formatCurrency(forecast?.predicted ?? 0)}
+                {loadingForecast ? "..." : financialValue(formatCurrency(forecast?.predicted ?? 0))}
               </p>
               <p className="text-[10px] text-muted-foreground mt-0.5">Soma dos valores dos clientes ativos</p>
             </div>
@@ -220,7 +233,7 @@ export default function FinancialPage() {
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Faturamento Real</p>
               <p className="text-xl font-bold text-emerald-600">
-                {loadingForecast ? "..." : formatCurrency(forecast?.received ?? 0)}
+                {loadingForecast ? "..." : financialValue(formatCurrency(forecast?.received ?? 0))}
               </p>
               <p className="text-[10px] text-muted-foreground mt-0.5">Pagamentos marcados como pago</p>
             </div>
@@ -235,7 +248,7 @@ export default function FinancialPage() {
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total Pendente</p>
               <p className="text-xl font-bold text-amber-600">
-                {loadingForecast ? "..." : formatCurrency(forecast?.pending ?? 0)}
+                {loadingForecast ? "..." : financialValue(formatCurrency(forecast?.pending ?? 0))}
               </p>
               <p className="text-[10px] text-muted-foreground mt-0.5">Previsto - Real</p>
             </div>
@@ -260,8 +273,8 @@ export default function FinancialPage() {
               />
             </div>
             <div className="flex justify-between mt-1.5">
-              <span className="text-[10px] text-muted-foreground">Recebido: {formatCurrency(forecast.received)}</span>
-              <span className="text-[10px] text-muted-foreground">Meta: {formatCurrency(forecast.predicted)}</span>
+              <span className="text-[10px] text-muted-foreground">Recebido: {financialValue(formatCurrency(forecast.received))}</span>
+              <span className="text-[10px] text-muted-foreground">Meta: {financialValue(formatCurrency(forecast.predicted))}</span>
             </div>
           </CardContent>
         </Card>
@@ -280,7 +293,7 @@ export default function FinancialPage() {
 
         {/* PLANEJAMENTO FINANCEIRO */}
         <TabsContent value="planning">
-          <BudgetPlanningDashboard year={selectedYear} month={selectedMonth} />
+          <BudgetPlanningDashboard year={selectedYear} month={selectedMonth} financialValue={financialValue} />
         </TabsContent>
 
         {/* FINANCEIRO DETALHADO */}
@@ -314,13 +327,13 @@ export default function FinancialPage() {
                             <div className="min-w-0">
                               <p className="text-sm font-semibold truncate">{d.companyName}</p>
                               <p className="text-xs text-muted-foreground">
-                                Valor mensal: {formatCurrency(d.monthlyValue)}
+                                Valor mensal: {financialValue(formatCurrency(d.monthlyValue))}
                               </p>
                             </div>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
                             <div className="text-right mr-2">
-                              <p className="text-sm font-bold">{formatCurrency(d.pending)}</p>
+                              <p className="text-sm font-bold">{financialValue(formatCurrency(d.pending))}</p>
                               <Badge variant="outline" className={`text-[10px] ${st.badgeClass}`}>
                                 {st.label}
                               </Badge>
@@ -370,13 +383,13 @@ export default function FinancialPage() {
                           <div className="min-w-0">
                             <p className="text-sm font-semibold truncate">{d.companyName}</p>
                             <p className="text-xs text-muted-foreground">
-                              Valor mensal: {formatCurrency(d.monthlyValue)}
+                              Valor mensal: {financialValue(formatCurrency(d.monthlyValue))}
                             </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <div className="text-right mr-2">
-                            <p className="text-sm font-bold text-emerald-600">{formatCurrency(d.received)}</p>
+                            <p className="text-sm font-bold text-emerald-600">{financialValue(formatCurrency(d.received))}</p>
                             <Badge variant="outline" className="text-[10px] bg-emerald-100 text-emerald-700 border-emerald-300">
                               Pago
                             </Badge>
@@ -420,15 +433,15 @@ export default function FinancialPage() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
                 <div className="p-3 rounded-lg bg-muted/30 text-center">
                   <p className="text-xs text-muted-foreground">Despesas Totais</p>
-                  <p className="text-lg font-bold text-foreground">{formatCurrency(stats?.totalExpenses ?? 0)}</p>
+                  <p className="text-lg font-bold text-foreground">{financialValue(formatCurrency(stats?.totalExpenses ?? 0))}</p>
                 </div>
                 <div className="p-3 rounded-lg bg-muted/30 text-center">
                   <p className="text-xs text-muted-foreground">Receita Total</p>
-                  <p className="text-lg font-bold text-emerald-600">{formatCurrency(stats?.totalRevenue ?? 0)}</p>
+                  <p className="text-lg font-bold text-emerald-600">{financialValue(formatCurrency(stats?.totalRevenue ?? 0))}</p>
                 </div>
                 <div className="p-3 rounded-lg bg-muted/30 text-center">
                   <p className="text-xs text-muted-foreground">Lucro Líquido</p>
-                  <p className={`text-lg font-bold ${profit >= 0 ? "text-emerald-600" : "text-destructive"}`}>{formatCurrency(profit)}</p>
+                  <p className={`text-lg font-bold ${profit >= 0 ? "text-emerald-600" : "text-destructive"}`}>{financialValue(formatCurrency(profit))}</p>
                 </div>
               </div>
 
@@ -440,7 +453,7 @@ export default function FinancialPage() {
                     <div key={e.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
                       <div>
                         <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium">{formatCurrency(e.amount)}</p>
+                          <p className="text-sm font-medium">{financialValue(formatCurrency(e.amount))}</p>
                           <Badge variant="outline" className="text-xs">{e.category}</Badge>
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5">

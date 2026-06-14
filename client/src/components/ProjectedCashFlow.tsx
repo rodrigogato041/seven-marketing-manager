@@ -8,6 +8,7 @@ interface ProjectedCashFlowProps {
   forecastedRevenue: number;
   totalExpenses: number;
   daysInMonth: number;
+  financialValue?: (value: string) => string;
   expenseItems?: Array<{
     source: string;
     amount: number;
@@ -23,6 +24,7 @@ export default function ProjectedCashFlow({
   forecastedRevenue,
   totalExpenses,
   daysInMonth,
+  financialValue = value => value,
   expenseItems = [],
 }: ProjectedCashFlowProps) {
   // Generate daily projection data
@@ -76,7 +78,7 @@ export default function ProjectedCashFlow({
           </CardHeader>
           <CardContent>
             <p className={`text-2xl font-bold ${finalBalance >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-              {formatCurrency(finalBalance)}
+              {financialValue(formatCurrency(finalBalance))}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
               {finalBalance >= 0 ? "✓ Superávit" : "✗ Déficit"}
@@ -90,7 +92,7 @@ export default function ProjectedCashFlow({
           </CardHeader>
           <CardContent>
             <p className={`text-2xl font-bold ${minBalance >= 0 ? "text-blue-600" : "text-orange-600"}`}>
-              {formatCurrency(minBalance)}
+              {financialValue(formatCurrency(minBalance))}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
               {minBalance >= 0 ? "Sem risco" : "Atenção: saldo negativo"}
@@ -104,7 +106,7 @@ export default function ProjectedCashFlow({
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold text-emerald-600">
-              {formatCurrency(maxBalance)}
+              {financialValue(formatCurrency(maxBalance))}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
               Pico de caixa no mês
@@ -152,7 +154,7 @@ export default function ProjectedCashFlow({
                   borderRadius: "0.5rem",
                   backdropFilter: "blur(10px)",
                 }}
-                formatter={(value: number) => formatCurrency(value)}
+                formatter={(value: number) => financialValue(formatCurrency(value))}
                 labelFormatter={(label) => `Dia ${label}`}
               />
               <Legend />
@@ -212,16 +214,16 @@ export default function ProjectedCashFlow({
                     <tr key={row.day} className="border-b border-border hover:bg-muted/50">
                       <td className="py-2 px-2">{row.day}</td>
                       <td className="text-right py-2 px-2 text-orange-600 font-medium">
-                        {formatCurrency(row.revenue)}
+                        {financialValue(formatCurrency(row.revenue))}
                       </td>
                       <td className="text-right py-2 px-2 text-slate-600 font-medium">
-                        {formatCurrency(row.dailyExpense)}
+                        {financialValue(formatCurrency(row.dailyExpense))}
                       </td>
                       <td className="text-right py-2 px-2 text-cyan-600 font-medium">
-                        {formatCurrency(row.expenses)}
+                        {financialValue(formatCurrency(row.expenses))}
                       </td>
                       <td className={`text-right py-2 px-2 font-bold ${row.balance >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                        {formatCurrency(row.balance)}
+                        {financialValue(formatCurrency(row.balance))}
                       </td>
                     </tr>
                   ))}

@@ -12,6 +12,7 @@ interface ScenarioAnalysisProps {
   breakEvenPoint: number;
   actualExpenses?: number;
   duplicatedExpenses?: number;
+  financialValue?: (value: string) => string;
 }
 
 function formatCurrency(value: number) {
@@ -24,6 +25,7 @@ export default function ScenarioAnalysis({
   breakEvenPoint,
   actualExpenses = 0,
   duplicatedExpenses = 0,
+  financialValue = value => value,
 }: ScenarioAnalysisProps) {
   const [revenueVariation, setRevenueVariation] = useState(0); // percentage
   const [expenseVariation, setExpenseVariation] = useState(0); // percentage
@@ -80,8 +82,8 @@ export default function ScenarioAnalysis({
                 className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
               />
               <div className="text-xs text-muted-foreground space-y-1">
-                <div>Base: {formatCurrency(baseRevenue)}</div>
-                <div>Cenário: {formatCurrency((baseRevenue * (1 + revenueVariation / 100)))}</div>
+                <div>Base: {financialValue(formatCurrency(baseRevenue))}</div>
+                <div>Cenário: {financialValue(formatCurrency((baseRevenue * (1 + revenueVariation / 100))))}</div>
               </div>
             </div>
 
@@ -101,8 +103,8 @@ export default function ScenarioAnalysis({
                 className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
               />
               <div className="text-xs text-muted-foreground space-y-1">
-                <div>Base: {formatCurrency(totalExpenses)}</div>
-                <div>Cenário: {formatCurrency((totalExpenses * (1 + expenseVariation / 100)))}</div>
+                <div>Base: {financialValue(formatCurrency(totalExpenses))}</div>
+                <div>Cenário: {financialValue(formatCurrency((totalExpenses * (1 + expenseVariation / 100))))}</div>
               </div>
             </div>
           </div>
@@ -121,7 +123,7 @@ export default function ScenarioAnalysis({
               <div>
                 <p className="text-xs text-muted-foreground">Lucro Previsto</p>
                 <p className={`text-2xl font-bold ${currentScenario.profit >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                  {formatCurrency(currentScenario.profit)}
+                  {financialValue(formatCurrency(currentScenario.profit))}
                 </p>
               </div>
               <div>
@@ -145,7 +147,7 @@ export default function ScenarioAnalysis({
               <div>
                 <p className="text-xs text-muted-foreground">Lucro Previsto</p>
                 <p className={`text-2xl font-bold ${selectedScenario.profit >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                  {formatCurrency(selectedScenario.profit)}
+                  {financialValue(formatCurrency(selectedScenario.profit))}
                 </p>
               </div>
               <div>
@@ -168,7 +170,7 @@ export default function ScenarioAnalysis({
             <CardTitle className="text-sm">Despesas Reais Travadas</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-slate-700">{formatCurrency(actualExpenses)}</p>
+            <p className="text-2xl font-bold text-slate-700">{financialValue(formatCurrency(actualExpenses))}</p>
             <p className="text-xs text-muted-foreground mt-1">Ja registradas no mes; nao variam no simulador</p>
           </CardContent>
         </Card>
@@ -177,7 +179,7 @@ export default function ScenarioAnalysis({
             <CardTitle className="text-sm">Despesas Projetadas Flexiveis</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-blue-600">{formatCurrency(Math.max(totalExpenses - actualExpenses, 0))}</p>
+            <p className="text-2xl font-bold text-blue-600">{financialValue(formatCurrency(Math.max(totalExpenses - actualExpenses, 0)))}</p>
             <p className="text-xs text-muted-foreground mt-1">Parte afetada pela variacao de despesas</p>
           </CardContent>
         </Card>
@@ -186,7 +188,7 @@ export default function ScenarioAnalysis({
             <CardTitle className="text-sm">Duplicidade Evitada</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-amber-700">{formatCurrency(duplicatedExpenses)}</p>
+            <p className="text-2xl font-bold text-amber-700">{financialValue(formatCurrency(duplicatedExpenses))}</p>
             <p className="text-xs text-muted-foreground mt-1">Despesas reais semelhantes a custos ja planejados</p>
           </CardContent>
         </Card>
@@ -217,7 +219,7 @@ export default function ScenarioAnalysis({
                   borderRadius: "0.5rem",
                   backdropFilter: "blur(10px)",
                 }}
-                formatter={(value: number) => formatCurrency(value)}
+                formatter={(value: number) => financialValue(formatCurrency(value))}
                 labelFormatter={(label) => `${label > 0 ? "+" : ""}${label}%`}
               />
               <Bar
@@ -261,13 +263,13 @@ export default function ScenarioAnalysis({
                       {scenario.variation > 0 ? "+" : ""}{scenario.variation}%
                     </td>
                     <td className="text-right py-2 px-2 text-orange-600">
-                      {formatCurrency(scenario.revenue)}
+                      {financialValue(formatCurrency(scenario.revenue))}
                     </td>
                     <td className="text-right py-2 px-2 text-cyan-600">
-                      {formatCurrency(scenario.expenses)}
+                      {financialValue(formatCurrency(scenario.expenses))}
                     </td>
                     <td className={`text-right py-2 px-2 font-bold ${scenario.profit >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                      {formatCurrency(scenario.profit)}
+                      {financialValue(formatCurrency(scenario.profit))}
                     </td>
                     <td className="text-right py-2 px-2 font-medium">
                       {scenario.profitMargin.toFixed(1)}%
@@ -294,13 +296,13 @@ export default function ScenarioAnalysis({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <p className="text-xs text-muted-foreground">Ponto de Equilíbrio</p>
-              <p className="text-2xl font-bold text-amber-600">{formatCurrency(breakEvenPoint)}</p>
+              <p className="text-2xl font-bold text-amber-600">{financialValue(formatCurrency(breakEvenPoint))}</p>
               <p className="text-xs text-muted-foreground mt-1">Faturamento mínimo necessário</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Margem até Equilíbrio</p>
               <p className="text-2xl font-bold text-blue-600">
-                {formatCurrency(Math.max(0, baseRevenue - breakEvenPoint))}
+                {financialValue(formatCurrency(Math.max(0, baseRevenue - breakEvenPoint)))}
               </p>
               <p className="text-xs text-muted-foreground mt-1">Quanto pode reduzir</p>
             </div>

@@ -49,12 +49,14 @@ function ImportedExpenseList({
   description,
   emptyMessage,
   items,
+  financialValue = value => value,
   duplicate = false,
 }: {
   title: string;
   description: string;
   emptyMessage: string;
   items: BudgetExpenseItem[];
+  financialValue?: (value: string) => string;
   duplicate?: boolean;
 }) {
   const rowClass = duplicate ? "border-amber-200 bg-amber-50/60" : "border-emerald-200 bg-emerald-50/60";
@@ -86,7 +88,7 @@ function ImportedExpenseList({
                   {duplicate ? " - Ignorada por duplicidade" : " - Contabilizada nesta coluna"}
                 </p>
               </div>
-              <p className={`shrink-0 font-bold ${amountClass}`}>{formatCurrency(item.amount)}</p>
+              <p className={`shrink-0 font-bold ${amountClass}`}>{financialValue(formatCurrency(item.amount))}</p>
             </div>
           ))}
         </div>
@@ -98,9 +100,10 @@ function ImportedExpenseList({
 interface BudgetPlanningDashboardProps {
   year: number;
   month: number;
+  financialValue?: (value: string) => string;
 }
 
-export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningDashboardProps) {
+export default function BudgetPlanningDashboard({ year, month, financialValue = value => value }: BudgetPlanningDashboardProps) {
   const [showAddFixedCost, setShowAddFixedCost] = useState(false);
   const [showAddVariableCost, setShowAddVariableCost] = useState(false);
   const [showAddPersonalExpense, setShowAddPersonalExpense] = useState(false);
@@ -260,9 +263,9 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
           {billingForecast && (
             <div className="text-sm text-muted-foreground space-y-2">
               <div className="font-semibold text-foreground">Faturamento Previsto (Dinamico)</div>
-              <div>Clientes ativos: <strong>{formatCurrency(billingForecast.predicted)}</strong></div>
-              <div>Recebido: <strong>{formatCurrency(billingForecast.received)}</strong></div>
-              <div>Pendente: <strong>{formatCurrency(billingForecast.pending)}</strong></div>
+              <div>Clientes ativos: <strong>{financialValue(formatCurrency(billingForecast.predicted))}</strong></div>
+              <div>Recebido: <strong>{financialValue(formatCurrency(billingForecast.received))}</strong></div>
+              <div>Pendente: <strong>{financialValue(formatCurrency(billingForecast.pending))}</strong></div>
             </div>
           )}
           {!billingForecast && (
@@ -291,7 +294,7 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase">Resultado Previsto</p>
               <p className={`text-2xl font-bold ${metrics?.netProfitForecast ?? 0 >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                {metrics ? formatCurrency(metrics.netProfitForecast) : "-"}
+                {metrics ? financialValue(formatCurrency(metrics.netProfitForecast)) : "-"}
               </p>
               <Badge className="mt-2" variant={budgetStatus === "positive" ? "default" : "destructive"}>
                 {budgetStatus === "positive" ? "✓ Lucro" : budgetStatus === "warning" ? "⚠ Atenção" : "✗ Prejuízo"}
@@ -309,7 +312,7 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase">Meta de Segurança</p>
               <p className="text-2xl font-bold text-green-600">
-                {metrics ? formatCurrency(metrics.safetyMargin) : "-"}
+                {metrics ? financialValue(formatCurrency(metrics.safetyMargin)) : "-"}
               </p>
               <p className="text-xs text-muted-foreground mt-1">Quanto ainda pode gastar</p>
             </div>
@@ -323,7 +326,7 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-muted-foreground">Ponto de Equilíbrio</p>
-              <p className="text-2xl font-bold mt-1">{metrics ? formatCurrency(metrics.breakEvenPoint) : "-"}</p>
+              <p className="text-2xl font-bold mt-1">{metrics ? financialValue(formatCurrency(metrics.breakEvenPoint)) : "-"}</p>
               <p className="text-xs text-muted-foreground mt-1">Faturamento mínimo necessário para cobrir todas as despesas</p>
             </div>
             <Zap className="h-8 w-8 text-amber-500" />
@@ -338,7 +341,7 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
             <CardTitle className="text-sm">Custos Fixos</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{formatCurrency(totalFixedCosts)}</p>
+            <p className="text-2xl font-bold">{financialValue(formatCurrency(totalFixedCosts))}</p>
             <p className="text-xs text-muted-foreground mt-1">Planejados + despesas reais classificadas</p>
           </CardContent>
         </Card>
@@ -348,7 +351,7 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
             <CardTitle className="text-sm">Custos Variáveis</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{formatCurrency(totalVariableCosts)}</p>
+            <p className="text-2xl font-bold">{financialValue(formatCurrency(totalVariableCosts))}</p>
             <p className="text-xs text-muted-foreground mt-1">Planejados + despesas reais classificadas</p>
           </CardContent>
         </Card>
@@ -358,7 +361,7 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
             <CardTitle className="text-sm">Despesas Pessoais</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{formatCurrency(totalPersonalExpenses)}</p>
+            <p className="text-2xl font-bold">{financialValue(formatCurrency(totalPersonalExpenses))}</p>
             <p className="text-xs text-muted-foreground mt-1">Planejadas + despesas reais classificadas</p>
           </CardContent>
         </Card>
@@ -368,7 +371,7 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
             <CardTitle className="text-sm">Despesas Integradas</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-emerald-700">{formatCurrency(metrics?.totalActualExpenses ?? 0)}</p>
+            <p className="text-2xl font-bold text-emerald-700">{financialValue(formatCurrency(metrics?.totalActualExpenses ?? 0))}</p>
             <p className="text-xs text-muted-foreground mt-1">{importedActualExpenses.length} vindas da aba Despesas</p>
           </CardContent>
         </Card>
@@ -378,7 +381,7 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
             <CardTitle className="text-sm">Duplicidades Ignoradas</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-amber-700">{formatCurrency(metrics?.totalDuplicatedActualExpenses ?? 0)}</p>
+            <p className="text-2xl font-bold text-amber-700">{financialValue(formatCurrency(metrics?.totalDuplicatedActualExpenses ?? 0))}</p>
             <p className="text-xs text-muted-foreground mt-1">{ignoredDuplicateExpenses.length} itens nao contados duas vezes</p>
           </CardContent>
         </Card>
@@ -411,7 +414,7 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
                     <p className="text-sm text-muted-foreground">{cost.category}</p>
                   </div>
                   <div className="flex items-center gap-4">
-                    <p className="font-bold">{formatCurrency(cost.amount)}</p>
+                    <p className="font-bold">{financialValue(formatCurrency(cost.amount))}</p>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -429,12 +432,14 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
             description="Itens registrados na aba Despesas que entraram automaticamente nesta coluna."
             emptyMessage="Nenhuma despesa da aba Despesas foi classificada como custo fixo neste mes."
             items={actualFixedExpenses}
+            financialValue={financialValue}
           />
           <ImportedExpenseList
             title="Duplicidades ignoradas em custo fixo"
             description="Itens parecidos com custos ja considerados e que nao entraram duas vezes no total."
             emptyMessage="Nenhuma duplicidade ignorada nesta coluna."
             items={duplicatedFixedExpenses}
+            financialValue={financialValue}
             duplicate
           />
         </TabsContent>
@@ -456,7 +461,7 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
                     <p className="text-sm text-muted-foreground">{cost.category}</p>
                   </div>
                   <div className="flex items-center gap-4">
-                    <p className="font-bold">{formatCurrency(cost.amount)}</p>
+                    <p className="font-bold">{financialValue(formatCurrency(cost.amount))}</p>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -474,12 +479,14 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
             description="Itens registrados na aba Despesas que entraram automaticamente nesta coluna."
             emptyMessage="Nenhuma despesa da aba Despesas foi classificada como custo variavel neste mes."
             items={actualVariableExpenses}
+            financialValue={financialValue}
           />
           <ImportedExpenseList
             title="Duplicidades ignoradas em custo variavel"
             description="Itens parecidos com custos ja considerados e que nao entraram duas vezes no total."
             emptyMessage="Nenhuma duplicidade ignorada nesta coluna."
             items={duplicatedVariableExpenses}
+            financialValue={financialValue}
             duplicate
           />
         </TabsContent>
@@ -501,7 +508,7 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
                     <p className="text-sm text-muted-foreground">{expense.category}</p>
                   </div>
                   <div className="flex items-center gap-4">
-                    <p className="font-bold">{formatCurrency(expense.amount)}</p>
+                    <p className="font-bold">{financialValue(formatCurrency(expense.amount))}</p>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -519,12 +526,14 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
             description="Itens registrados na aba Despesas que entraram automaticamente nesta coluna."
             emptyMessage="Nenhuma despesa da aba Despesas foi classificada como despesa pessoal neste mes."
             items={actualPersonalExpenses}
+            financialValue={financialValue}
           />
           <ImportedExpenseList
             title="Duplicidades ignoradas em despesas pessoais"
             description="Itens parecidos com despesas ja consideradas e que nao entraram duas vezes no total."
             emptyMessage="Nenhuma duplicidade ignorada nesta coluna."
             items={duplicatedPersonalExpenses}
+            financialValue={financialValue}
             duplicate
           />
         </TabsContent>
@@ -537,6 +546,7 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
               totalExpenses={metrics.totalExpenses}
               daysInMonth={new Date(year, month, 0).getDate()}
               expenseItems={metrics.expenseItems ?? []}
+              financialValue={financialValue}
             />
           )}
         </TabsContent>
@@ -550,6 +560,7 @@ export default function BudgetPlanningDashboard({ year, month }: BudgetPlanningD
               breakEvenPoint={metrics.breakEvenPoint}
               actualExpenses={metrics.totalActualExpenses ?? 0}
               duplicatedExpenses={metrics.totalDuplicatedActualExpenses ?? 0}
+              financialValue={financialValue}
             />
           )}
         </TabsContent>
