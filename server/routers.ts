@@ -15,6 +15,24 @@ import { pdfExportRouter } from "./pdfExportRouter";
 import { budgetAlertsRouter } from "./budgetAlertsRouter";
 import { googleCalendarRouter } from "./googleCalendarRouter";
 
+const taskPrioritySchema = z.enum(["low", "medium", "high", "urgent"]);
+const taskTypeSchema = z.enum([
+  "art",
+  "video",
+  "editing",
+  "script",
+  "copy",
+  "traffic",
+  "service",
+  "meeting",
+  "financial",
+  "administrative",
+  "publishing",
+  "report",
+  "capture",
+  "planning",
+]);
+
 // ─── Client Router ───
 const clientRouter = router({
   list: protectedProcedure.query(() => db.listClients()),
@@ -132,14 +150,16 @@ const taskRouter = router({
     title: z.string().min(1),
     description: z.string().optional(),
     status: z.enum(["todo", "in_progress", "done"]).optional(),
-    priority: z.enum(["low", "medium", "high"]).optional(),
+    priority: taskPrioritySchema.optional(),
+    taskType: taskTypeSchema.optional(),
+    checklist: z.string().optional(),
     clientId: z.number().optional(),
     collaboratorId: z.number().optional(),
     dueDate: z.number().optional(),
     sortOrder: z.number().optional(),
   })).mutation(async ({ input }) => {
     const result = await db.createTask(input);
-    if (input.priority === "high") {
+    if (input.priority === "high" || input.priority === "urgent") {
       await notifyOwner({ title: "Tarefa Urgente Criada", content: `A tarefa "${input.title}" com prioridade alta foi criada.` }).catch(() => {});
     }
     return result;
@@ -149,7 +169,9 @@ const taskRouter = router({
     title: z.string().min(1).optional(),
     description: z.string().optional(),
     status: z.enum(["todo", "in_progress", "done"]).optional(),
-    priority: z.enum(["low", "medium", "high"]).optional(),
+    priority: taskPrioritySchema.optional(),
+    taskType: taskTypeSchema.optional(),
+    checklist: z.string().optional(),
     clientId: z.number().optional(),
     collaboratorId: z.number().optional(),
     dueDate: z.number().optional(),
@@ -296,6 +318,8 @@ const notificationRouter = router({
 // ─── Dashboard Router ───
 const dashboardRouter = router({
   stats: protectedProcedure.query(() => db.getDashboardStats()),
+  today: protectedProcedure.query(() => db.getTodayCommandCenter()),
+  globalSearch: protectedProcedure.input(z.object({ query: z.string().min(1) })).query(({ input }) => db.globalSearch(input.query)),
   monthlyRevenue: protectedProcedure.query(() => db.getMonthlyRevenue()),
   monthlyExpenses: protectedProcedure.query(() => db.getMonthlyExpenses()),
   topServices: protectedProcedure.query(() => db.getTopServices()),

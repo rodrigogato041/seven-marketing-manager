@@ -29,6 +29,8 @@ import {
 import { useIsMobile } from "@/hooks/useMobile";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
+import { GlobalSearch } from "@/components/GlobalSearch";
+import { QuickCreateMenu } from "@/components/QuickCreateMenu";
 import {
   Bell,
   CalendarDays,
@@ -38,7 +40,6 @@ import {
   LayoutDashboard,
   LogOut,
   PanelLeft,
-  Search,
   UserCog,
   Users,
 } from "lucide-react";
@@ -469,12 +470,18 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
 
       <SidebarInset className="min-w-0 overflow-x-hidden bg-[var(--app-surface)]">
         {isMobile ? (
-          <div className="sticky top-0 z-40 flex h-14 items-center justify-between border-b bg-white/90 px-3 backdrop-blur">
-            <div className="flex items-center gap-2">
-              <SidebarTrigger className="h-9 w-9 rounded-md" />
-              <span className="text-sm font-semibold text-foreground">{activeMenuItem?.label ?? "Menu"}</span>
+          <div className="sticky top-0 z-40 border-b bg-white/95 px-3 py-2 backdrop-blur">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <SidebarTrigger className="h-9 w-9 rounded-md" />
+                <span className="text-sm font-semibold text-foreground">{activeMenuItem?.label ?? "Menu"}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <QuickCreateMenu compact />
+                <NotificationBell />
+              </div>
             </div>
-            <NotificationBell />
+            <GlobalSearch compact />
           </div>
         ) : (
           <div className="sticky top-0 z-40 flex h-[60px] items-center justify-between border-b border-border/70 bg-white/85 px-6 backdrop-blur-xl">
@@ -483,10 +490,8 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
               <h2 className="truncate text-sm font-semibold text-foreground">{activeMenuItem?.label ?? "Dashboard"}</h2>
             </div>
             <div className="flex items-center gap-3">
-              <div className="relative hidden w-72 lg:block">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input className="h-9 rounded-md bg-muted/50 pl-9" placeholder="Buscar no sistema" />
-              </div>
+              <GlobalSearch />
+              <QuickCreateMenu />
               <NotificationBell />
             </div>
           </div>

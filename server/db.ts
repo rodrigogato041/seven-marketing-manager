@@ -248,6 +248,8 @@ export async function createTask(data: Omit<InsertTask, "id" | "createdAt" | "up
   const record = await insert("tasks", {
     status: "todo",
     priority: "medium",
+    taskType: "administrative",
+    checklist: "[]",
     sortOrder: 0,
     ...data,
   });
@@ -487,6 +489,283 @@ export async function getWeeklySummary() {
     tasksCompleted: tasks.filter(task => task.status === "done" && asNumber(new Date(task.updatedAt).getTime()) >= weekAgo).length,
     tasksPending: tasks.filter(task => task.status === "todo" || task.status === "in_progress").length,
     weeklyRevenue: payments.filter(payment => payment.status === "paid" && asNumber(payment.paidDate ?? payment.dueDate) >= weekAgo).reduce((sum, payment) => sum + money(payment.amount), 0),
+  };
+}
+
+function getDayRange(date = new Date()) {
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const end = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999).getTime();
+  return { start, end };
+}
+
+function textMatches(query: string, values: unknown[]) {
+  const normalized = query.trim().toLowerCase();
+  return values
+    .filter(value => value !== null && value !== undefined)
+    .some(value => String(value).toLowerCase().includes(normalized));
+}
+
+export async function getTodayCommandCenter() {
+  const today = new Date();
+  const { start, end } = getDayRange(today);
+  const threeDaysEnd = end + 3 * 24 * 60 * 60 * 1000;
+  const [tasks, events, payments, clients, production] = await Promise.all([
+    listTasks(),
+    listEvents(start, end),
+    listPayments(),
+    listClients(),
+    list("productionTracking"),
+  ]);
+
+  const clientsById = new Map(clients.map(client => [client.id, client]));
+  const openTasks = tasks.filter(task => task.status !== "done");
+  const tasksDueToday = openTasks.filter(task => asNumber(task.dueDate) >= start && asNumber(task.dueDate) <= end);
+  const overdueTasks = openTasks.filter(task => task.dueDate && asNumber(task.dueDate) < start);
+  const meetingsToday = events.filter(event => event.type === "meeting");
+  const pendingPayments = payments.filter(payment => payment.status === "pending" || payment.status === "overdue");
+  const enrichPayment = (payment: any) => ({
+    ...payment,
+    companyName: clientsById.get(payment.clientId)?.companyName ?? "Cliente sem nome",
+  });
+  const paymentsDueToday = pendingPayments
+    .filter(payment => asNumber(payment.dueDate) >= start && asNumber(payment.dueDate) <= end)
+    .map(enrichPayment);
+  const paymentsDueSoon = pendingPayments
+    .filter(payment => asNumber(payment.dueDate) > end && asNumber(payment.dueDate) <= threeDaysEnd)
+    .map(enrichPayment);
+  const overduePayments = pendingPayments
+    .filter(payment => asNumber(payment.dueDate) < start)
+    .map(enrichPayment);
+
+  const year = today.getFullYear();
+  const month = today.getMonth() + 1;
+  const activeClients = clients.filter(client => client.status === "active");
+  const productionPending = activeClients
+    .map(client => {
+      const tracking = production.find(item => item.clientId === client.id && item.year === year && item.month === month);
+      const videoTarget = asNumber(client.videoQuantity);
+      const imageTarget = asNumber(client.imageQuantity);
+      const videosProduced = asNumber(tracking?.videosProduced);
+      const imagesProduced = asNumber(tracking?.imagesProduced);
+      const pendingVideos = Math.max(videoTarget - videosProduced, 0);
+      const pendingImages = Math.max(imageTarget - imagesProduced, 0);
+      return {
+        clientId: client.id,
+        companyName: client.companyName,
+        pendingVideos,
+        pendingImages,
+        totalPending: pendingVideos + pendingImages,
+      };
+    })
+    .filter(item => item.totalPending > 0)
+    .sort((a, b) => b.totalPending - a.totalPending);
+
+  const attentionClientIds = new Set<number>();
+  overdueTasks.forEach(task => {
+    if (task.clientId) attentionClientIds.add(task.clientId);
+  });
+  overduePayments.forEach(payment => attentionClientIds.add(payment.clientId));
+  productionPending.slice(0, 10).forEach(item => attentionClientIds.add(item.clientId));
+  const clientsNeedingAttention = Array.from(attentionClientIds)
+    .map(id => clientsById.get(id))
+    .filter(Boolean)
+    .map(client => ({
+      id: client!.id,
+      companyName: client!.companyName,
+      status: client!.status,
+      reasons: [
+        overdueTasks.some(task => task.clientId === client!.id) ? "tarefas atrasadas" : null,
+        overduePayments.some(payment => payment.clientId === client!.id) ? "pagamento atrasado" : null,
+        productionPending.some(item => item.clientId === client!.id) ? "produção pendente" : null,
+      ].filter(Boolean),
+    }));
+
+  const criticalAlerts = [
+    overduePayments.length > 0 ? `${overduePayments.length} pagamento(s) atrasado(s)` : null,
+    overdueTasks.length > 0 ? `${overdueTasks.length} tarefa(s) atrasada(s)` : null,
+    productionPending.length > 0 ? `${productionPending.length} cliente(s) com produção pendente` : null,
+  ].filter(Boolean);
+
+  return {
+    date: start,
+    summary: `Hoje você tem ${tasksDueToday.length} tarefa(s) vencendo, ${overdueTasks.length} atrasada(s), ${meetingsToday.length} reunião(ões), ${paymentsDueToday.length} pagamento(s) vencendo e ${productionPending.length} cliente(s) com produção em aberto.`,
+    counts: {
+      tasksDueToday: tasksDueToday.length,
+      overdueTasks: overdueTasks.length,
+      eventsToday: events.length,
+      meetingsToday: meetingsToday.length,
+      paymentsDueToday: paymentsDueToday.length,
+      paymentsDueSoon: paymentsDueSoon.length,
+      overduePayments: overduePayments.length,
+      productionPending: productionPending.length,
+      clientsNeedingAttention: clientsNeedingAttention.length,
+      criticalAlerts: criticalAlerts.length,
+    },
+    tasksDueToday,
+    overdueTasks,
+    eventsToday: events,
+    paymentsDueToday,
+    paymentsDueSoon,
+    overduePayments,
+    productionPending: productionPending.slice(0, 8),
+    clientsNeedingAttention,
+    criticalAlerts,
+  };
+}
+
+export async function globalSearch(query: string) {
+  const q = query.trim();
+  if (q.length < 2) {
+    return { query: q, categories: [], total: 0 };
+  }
+
+  const [clients, tasks, expenses, payments, collaborators, events, investments, creditCards, production] = await Promise.all([
+    listClients(),
+    listTasks(),
+    listExpenses(),
+    listPayments(),
+    listCollaborators(),
+    listEvents(),
+    listInvestments(),
+    listCreditCardTransactions(),
+    list("productionTracking"),
+  ]);
+  const clientsById = new Map(clients.map(client => [client.id, client]));
+  const limit = 6;
+
+  const categories = [
+    {
+      type: "clients",
+      label: "Clientes",
+      items: clients
+        .filter(client => textMatches(q, [client.companyName, client.contactName, client.email, client.phone, client.whatsapp, client.notes]))
+        .slice(0, limit)
+        .map(client => ({
+          id: client.id,
+          title: client.companyName,
+          subtitle: client.contactName,
+          meta: client.status,
+          href: `/clientes/${client.id}`,
+        })),
+    },
+    {
+      type: "tasks",
+      label: "Tarefas",
+      items: tasks
+        .filter(task => textMatches(q, [task.title, task.description, task.status, task.priority, task.taskType, clientsById.get(task.clientId)?.companyName]))
+        .slice(0, limit)
+        .map(task => ({
+          id: task.id,
+          title: task.title,
+          subtitle: clientsById.get(task.clientId)?.companyName ?? "Sem cliente vinculado",
+          meta: task.status,
+          href: "/tarefas",
+        })),
+    },
+    {
+      type: "expenses",
+      label: "Despesas",
+      items: expenses
+        .filter(expense => textMatches(q, [expense.category, expense.description, expense.amount]))
+        .slice(0, limit)
+        .map(expense => ({
+          id: expense.id,
+          title: expense.description || expense.category,
+          subtitle: expense.category,
+          meta: money(expense.amount),
+          href: "/financeiro",
+        })),
+    },
+    {
+      type: "payments",
+      label: "Pagamentos",
+      items: payments
+        .filter(payment => textMatches(q, [payment.description, payment.amount, payment.status, clientsById.get(payment.clientId)?.companyName]))
+        .slice(0, limit)
+        .map(payment => ({
+          id: payment.id,
+          title: clientsById.get(payment.clientId)?.companyName ?? "Pagamento",
+          subtitle: payment.description || "Recebimento",
+          meta: payment.status,
+          href: "/financeiro",
+        })),
+    },
+    {
+      type: "collaborators",
+      label: "Colaboradores",
+      items: collaborators
+        .filter(collaborator => textMatches(q, [collaborator.name, collaborator.role, collaborator.email, collaborator.phone]))
+        .slice(0, limit)
+        .map(collaborator => ({
+          id: collaborator.id,
+          title: collaborator.name,
+          subtitle: collaborator.role,
+          meta: collaborator.status,
+          href: "/colaboradores",
+        })),
+    },
+    {
+      type: "events",
+      label: "Eventos",
+      items: events
+        .filter(event => textMatches(q, [event.title, event.description, event.type, clientsById.get(event.clientId)?.companyName]))
+        .slice(0, limit)
+        .map(event => ({
+          id: event.id,
+          title: event.title,
+          subtitle: clientsById.get(event.clientId)?.companyName ?? event.type,
+          meta: event.startTime,
+          href: "/calendario",
+        })),
+    },
+    {
+      type: "investments",
+      label: "Investimentos",
+      items: investments
+        .filter(investment => textMatches(q, [investment.name, investment.description, investment.type, investment.amount]))
+        .slice(0, limit)
+        .map(investment => ({
+          id: investment.id,
+          title: investment.name,
+          subtitle: investment.type,
+          meta: money(investment.amount),
+          href: "/financeiro",
+        })),
+    },
+    {
+      type: "creditCards",
+      label: "Cartão",
+      items: creditCards
+        .filter(card => textMatches(q, [card.description, card.category, card.amount, card.status]))
+        .slice(0, limit)
+        .map(card => ({
+          id: card.id,
+          title: card.description,
+          subtitle: card.category,
+          meta: card.status,
+          href: "/financeiro",
+        })),
+    },
+    {
+      type: "production",
+      label: "Produção",
+      items: production
+        .filter(item => textMatches(q, [clientsById.get(item.clientId)?.companyName, item.year, item.month]))
+        .slice(0, limit)
+        .map(item => ({
+          id: item.id,
+          title: clientsById.get(item.clientId)?.companyName ?? "Produção",
+          subtitle: `${item.month}/${item.year}`,
+          meta: `${asNumber(item.videosProduced)} vídeos, ${asNumber(item.imagesProduced)} imagens`,
+          href: clientsById.get(item.clientId) ? `/clientes/${item.clientId}` : "/clientes",
+        })),
+    },
+  ].filter(category => category.items.length > 0);
+
+  return {
+    query: q,
+    categories,
+    total: categories.reduce((sum, category) => sum + category.items.length, 0),
   };
 }
 

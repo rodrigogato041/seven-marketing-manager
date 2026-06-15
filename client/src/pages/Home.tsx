@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip } from "recharts";
 import PremiumLineChart from "@/components/PremiumLineChart";
+import { TodayCommandCenter } from "@/components/TodayCommandCenter";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -207,6 +208,8 @@ export default function Home() {
           </DropdownMenu>
         </div>
       </div>
+
+      <TodayCommandCenter />
 
       {/* KPI Cards */}
       <div className="grid w-full min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
