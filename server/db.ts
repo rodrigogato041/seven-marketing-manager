@@ -796,6 +796,219 @@ export async function getProductionTrackingForClient(clientId: number, year: num
   };
 }
 
+function serviceListForClient(client: LocalRecord) {
+  const services = [
+    client.metaAds ? "Meta Ads" : null,
+    client.googleAds ? "Google Ads" : null,
+    client.socialMedia ? "Redes Sociais" : null,
+    client.otherServices ? String(client.otherServices) : null,
+  ].filter(Boolean) as string[];
+  return services;
+}
+
+function clientHealthStatus(score: number, tags: string[]) {
+  if (tags.includes("inadimplente")) return { key: "inadimplente", label: "Inadimplente" };
+  if (score < 45) return { key: "risco", label: "Risco" };
+  if (tags.includes("sobrecarregado")) return { key: "sobrecarregado", label: "Sobrecarregado" };
+  if (score < 70) return { key: "atencao", label: "Atenção" };
+  if (tags.includes("upsell")) return { key: "upsell", label: "Oportunidade de upsell" };
+  return { key: "saudavel", label: "Saudável" };
+}
+
+async function buildClientHealth(client: LocalRecord, context?: {
+  tasks?: LocalRecord[];
+  payments?: LocalRecord[];
+  production?: LocalRecord[];
+  documents?: LocalRecord[];
+}) {
+  const now = nowMs();
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth() + 1;
+  const monthStart = new Date(year, month - 1, 1).getTime();
+  const monthEnd = new Date(year, month, 0, 23, 59, 59, 999).getTime();
+  const dayOfMonth = today.getDate();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const monthProgress = dayOfMonth / daysInMonth;
+
+  const [tasks, payments, production, documents] = context ? [
+    context.tasks ?? [],
+    context.payments ?? [],
+    context.production ?? [],
+    context.documents ?? [],
+  ] : await Promise.all([
+    listTasks(),
+    listPayments(),
+    list("productionTracking"),
+    listDocuments(),
+  ]);
+
+  const clientTasks = tasks.filter(task => task.clientId === client.id);
+  const openTasks = clientTasks.filter(task => task.status !== "done");
+  const completedTasks = clientTasks.filter(task => task.status === "done");
+  const overdueTasks = openTasks.filter(task => task.dueDate && asNumber(task.dueDate) < now);
+  const urgentTasks = openTasks.filter(task => task.priority === "high" || task.priority === "urgent");
+  const clientPayments = payments.filter(payment => payment.clientId === client.id);
+  const monthPayments = clientPayments.filter(payment => isInRange(payment.dueDate, monthStart, monthEnd) || isInRange(payment.paidDate, monthStart, monthEnd));
+  const paidPayments = clientPayments.filter(payment => payment.status === "paid");
+  const pendingPayments = clientPayments.filter(payment => payment.status !== "paid");
+  const overduePayments = pendingPayments.filter(payment => asNumber(payment.dueDate) < now);
+  const received = paidPayments.reduce((sum, payment) => sum + money(payment.amount), 0);
+  const pending = pendingPayments.reduce((sum, payment) => sum + money(payment.amount), 0);
+  const monthlyValue = money(client.monthlyValue);
+
+  const tracking = production.find(item => item.clientId === client.id && item.year === year && item.month === month);
+  const videoTarget = asNumber(client.videoQuantity);
+  const imageTarget = asNumber(client.imageQuantity);
+  const videosProduced = asNumber(tracking?.videosProduced);
+  const imagesProduced = asNumber(tracking?.imagesProduced);
+  const totalContracted = videoTarget + imageTarget;
+  const totalDelivered = videosProduced + imagesProduced;
+  const productionProgress = totalContracted > 0 ? Math.min(100, roundMoney((totalDelivered / totalContracted) * 100)) : 100;
+  const productionBehind = totalContracted > 0 && productionProgress < Math.max(35, monthProgress * 100 - 20);
+  const serviceCount = serviceListForClient(client).length;
+  const hasContract = documents.some(document => document.clientId === client.id && document.category === "contract");
+  const estimatedWorkloadCost = openTasks.length * 80 + videoTarget * 150 + imageTarget * 40;
+  const estimatedMargin = monthlyValue > 0 ? roundMoney(((monthlyValue - estimatedWorkloadCost) / monthlyValue) * 100) : 0;
+  const operationalLoad = monthlyValue > 0 ? roundMoney((estimatedWorkloadCost / monthlyValue) * 100) : openTasks.length > 0 ? 100 : 0;
+
+  let score = 100;
+  const reasons: string[] = [];
+  const tags: string[] = [];
+
+  if (client.status !== "active") {
+    score -= 20;
+    reasons.push("cliente não está ativo");
+  }
+  if (overduePayments.length > 0) {
+    score -= 35;
+    tags.push("inadimplente");
+    reasons.push(`${overduePayments.length} pagamento(s) em atraso`);
+  } else if (pendingPayments.length > 0) {
+    score -= 8;
+    reasons.push(`${pendingPayments.length} pagamento(s) pendente(s)`);
+  }
+  if (overdueTasks.length > 0) {
+    score -= Math.min(25, overdueTasks.length * 8);
+    reasons.push(`${overdueTasks.length} tarefa(s) atrasada(s)`);
+  }
+  if (urgentTasks.length > 0) {
+    score -= Math.min(12, urgentTasks.length * 4);
+    reasons.push(`${urgentTasks.length} tarefa(s) de alta prioridade`);
+  }
+  if (productionBehind) {
+    score -= 18;
+    reasons.push("produção abaixo do ritmo do mês");
+  }
+  if (operationalLoad > 95 || openTasks.length >= 10) {
+    score -= 15;
+    tags.push("sobrecarregado");
+    reasons.push("alta demanda operacional para o contrato");
+  }
+  if (!hasContract) {
+    score -= 6;
+    reasons.push("contrato não anexado");
+  }
+  if (serviceCount <= 1 && client.status === "active") {
+    tags.push("upsell");
+    reasons.push("cliente com potencial de contratar mais serviços");
+  }
+
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  const status = clientHealthStatus(score, tags);
+  const upsellOpportunities = [
+    !client.metaAds ? "Meta Ads" : null,
+    !client.googleAds ? "Google Ads" : null,
+    !client.socialMedia ? "Redes Sociais" : null,
+    videoTarget === 0 ? "Vídeos/Reels" : null,
+  ].filter(Boolean);
+
+  return {
+    clientId: client.id,
+    companyName: client.companyName,
+    contactName: client.contactName,
+    monthlyValue,
+    status,
+    score,
+    reasons,
+    tags,
+    services: serviceListForClient(client),
+    upsellOpportunities,
+    metrics: {
+      openTasks: openTasks.length,
+      completedTasks: completedTasks.length,
+      overdueTasks: overdueTasks.length,
+      urgentTasks: urgentTasks.length,
+      received: roundMoney(received),
+      pending: roundMoney(pending),
+      overduePayments: overduePayments.length,
+      monthPayments: monthPayments.length,
+      productionProgress,
+      contractedVideos: videoTarget,
+      deliveredVideos: videosProduced,
+      contractedImages: imageTarget,
+      deliveredImages: imagesProduced,
+      hasContract,
+      estimatedMargin,
+      operationalLoad,
+    },
+    latestActivityAt: Math.max(
+      ...clientTasks.map(task => asNumber(new Date(task.updatedAt).getTime())),
+      ...clientPayments.map(payment => asNumber(payment.paidDate ?? payment.dueDate)),
+      asNumber(new Date(client.updatedAt ?? client.createdAt).getTime())
+    ),
+  };
+}
+
+export async function getClientHealth(clientId: number) {
+  const client = await getClientById(clientId);
+  if (!client) return null;
+  return buildClientHealth(client);
+}
+
+export async function getClientIntelligence() {
+  const [clients, tasks, payments, production, documents] = await Promise.all([
+    listClients(),
+    listTasks(),
+    listPayments(),
+    list("productionTracking"),
+    listDocuments(),
+  ]);
+  const context = { tasks, payments, production, documents };
+  const health = await Promise.all(clients.map(client => buildClientHealth(client, context)));
+  const activeHealth = health.filter(item => clients.find(client => client.id === item.clientId)?.status === "active");
+  const sortDesc = <T extends { value: number }>(items: T[]) => [...items].sort((a, b) => b.value - a.value).slice(0, 5);
+
+  return {
+    summary: {
+      totalClients: clients.length,
+      activeClients: activeHealth.length,
+      healthy: health.filter(item => item.status.key === "saudavel" || item.status.key === "upsell").length,
+      attention: health.filter(item => item.status.key === "atencao" || item.status.key === "sobrecarregado").length,
+      risk: health.filter(item => item.status.key === "risco").length,
+      delinquent: health.filter(item => item.status.key === "inadimplente").length,
+      averageScore: health.length ? Math.round(health.reduce((sum, item) => sum + item.score, 0) / health.length) : 0,
+    },
+    health,
+    ranking: {
+      topRevenue: sortDesc(health.map(item => ({ clientId: item.clientId, companyName: item.companyName, value: item.monthlyValue, label: "Faturamento" }))),
+      mostProfitable: sortDesc(health.map(item => ({ clientId: item.clientId, companyName: item.companyName, value: item.metrics.estimatedMargin, label: "Margem estimada" }))),
+      leastProfitable: [...health]
+        .map(item => ({ clientId: item.clientId, companyName: item.companyName, value: item.metrics.estimatedMargin, label: "Margem estimada" }))
+        .sort((a, b) => a.value - b.value)
+        .slice(0, 5),
+      mostTasks: sortDesc(health.map(item => ({ clientId: item.clientId, companyName: item.companyName, value: item.metrics.openTasks, label: "Tarefas abertas" }))),
+      mostOverdue: sortDesc(health.map(item => ({ clientId: item.clientId, companyName: item.companyName, value: item.metrics.overdueTasks + item.metrics.overduePayments, label: "Pendências" }))),
+      upsell: health
+        .filter(item => item.upsellOpportunities.length > 0)
+        .map(item => ({ clientId: item.clientId, companyName: item.companyName, value: item.upsellOpportunities.length, label: item.upsellOpportunities.join(", ") }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 5),
+      operationalLoad: sortDesc(health.map(item => ({ clientId: item.clientId, companyName: item.companyName, value: item.metrics.operationalLoad, label: "Carga operacional" }))),
+    },
+  };
+}
+
 export async function deleteProductionTrackingForClient(clientId: number) {
   const data = await loadData();
   data.productionTracking = data.productionTracking.filter(item => item.clientId !== clientId);

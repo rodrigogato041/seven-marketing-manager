@@ -36,6 +36,8 @@ const taskTypeSchema = z.enum([
 // ─── Client Router ───
 const clientRouter = router({
   list: protectedProcedure.query(() => db.listClients()),
+  intelligence: protectedProcedure.query(() => db.getClientIntelligence()),
+  health: protectedProcedure.input(z.object({ id: z.number() })).query(({ input }) => db.getClientHealth(input.id)),
   getById: protectedProcedure.input(z.object({ id: z.number() })).query(({ input }) => db.getClientById(input.id)),
   create: protectedProcedure.input(z.object({
     companyName: z.string().min(1),

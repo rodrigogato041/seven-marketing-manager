@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Plus, Search, Building2, Phone, Mail, Pencil, Trash2, Camera } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
+import { ClientHealthBadge, ClientIntelligenceDashboard } from "@/components/ClientIntelligenceDashboard";
 
 function formatCurrency(value: string | number | null) {
   const num = typeof value === "string" ? parseFloat(value) : (value ?? 0);
@@ -67,6 +68,7 @@ export default function ClientsPage() {
 
   const utils = trpc.useUtils();
   const { data: clientsList, isLoading } = trpc.clients.list.useQuery();
+  const { data: intelligence } = trpc.clients.intelligence.useQuery(undefined, { refetchInterval: 30000 });
   const createMutation = trpc.clients.create.useMutation({ onSuccess: () => { utils.clients.list.invalidate(); setOpen(false); toast.success("Cliente criado com sucesso!"); } });
   const updateMutation = trpc.clients.update.useMutation({ onSuccess: () => { utils.clients.list.invalidate(); setOpen(false); toast.success("Cliente atualizado!"); } });
   const deleteMutation = trpc.clients.delete.useMutation({ onSuccess: () => { utils.clients.list.invalidate(); toast.success("Cliente removido!"); } });
@@ -79,6 +81,7 @@ export default function ClientsPage() {
     c.companyName.toLowerCase().includes(search.toLowerCase()) ||
     c.contactName.toLowerCase().includes(search.toLowerCase())
   ) ?? [];
+  const healthMap = new Map((intelligence?.health ?? []).map(item => [item.clientId, item]));
 
   function openNew() {
     setEditId(null);
@@ -181,6 +184,8 @@ export default function ClientsPage() {
         <Input placeholder="Buscar clientes..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
       </div>
 
+      <ClientIntelligenceDashboard />
+
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1,2,3].map(i => <Card key={i} className="animate-pulse h-48" />)}
@@ -222,6 +227,9 @@ export default function ClientsPage() {
                         <Badge variant={st.variant} className="shrink-0 text-xs ml-2">{st.label}</Badge>
                       </div>
                       <p className="text-sm text-muted-foreground truncate">{c.contactName}</p>
+                      <div className="mt-2">
+                        <ClientHealthBadge health={healthMap.get(c.id)} />
+                      </div>
                     </div>
                   </div>
                   <div className="space-y-1.5 text-sm text-muted-foreground">

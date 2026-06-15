@@ -15,6 +15,7 @@ import {
 import { ArrowLeft, Phone, Mail, MessageCircle, FileText, Plus, Trash2, Download, CheckCircle, Clock, AlertTriangle, Undo2 } from "lucide-react";
 import { useLocation, useParams } from "wouter";
 import { toast } from "sonner";
+import { Client360Overview } from "@/components/ClientIntelligenceDashboard";
 
 function formatCurrency(value: string | number | null) {
   const num = typeof value === "string" ? parseFloat(value) : (value ?? 0);
@@ -30,6 +31,12 @@ function formatDate(ts: number | null) {
   return `${day}/${month}/${year}`;
 }
 
+function parseLocalDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return Date.now();
+  return new Date(year, month - 1, day, 12, 0, 0, 0).getTime();
+}
+
 const paymentStatusMap: Record<string, { label: string; icon: any; color: string }> = {
   paid: { label: "Pago", icon: CheckCircle, color: "text-emerald-600" },
   pending: { label: "Pendente", icon: Clock, color: "text-amber-600" },
@@ -38,9 +45,16 @@ const paymentStatusMap: Record<string, { label: string; icon: any; color: string
 
 function ProductionTab({ clientId, client }: { clientId: number; client: any }) {
   const currentMonth = new Date().toISOString().slice(0, 7);
+  const utils = trpc.useUtils();
   const { data: production, isLoading: prodLoading } = trpc.contentProduction.get.useQuery({ clientId, month: currentMonth });
   const updateProduction = trpc.contentProduction.upsert.useMutation({
-    onSuccess: () => { trpc.useUtils().contentProduction.get.invalidate(); toast.success("Produção atualizada!"); },
+    onSuccess: () => {
+      utils.contentProduction.get.invalidate({ clientId, month: currentMonth });
+      utils.clients.health.invalidate({ id: clientId });
+      utils.clients.intelligence.invalidate();
+      utils.dashboard.today.invalidate();
+      toast.success("Produção atualizada!");
+    },
   });
 
   const [videosProduced, setVideosProduced] = useState<number>(0);
@@ -150,12 +164,25 @@ export default function ClientDetailPage() {
   const { data: docsList } = trpc.documents.list.useQuery({ clientId });
 
   const utils = trpc.useUtils();
+  const refreshClientIntelligence = () => {
+    utils.clients.health.invalidate({ id: clientId });
+    utils.clients.intelligence.invalidate();
+    utils.dashboard.today.invalidate();
+  };
 
   // Payment dialog
   const [payOpen, setPayOpen] = useState(false);
   const [payForm, setPayForm] = useState({ amount: "", dueDate: "", status: "pending" as string, description: "" });
   const createPayment = trpc.payments.create.useMutation({
-    onSuccess: () => { utils.payments.list.invalidate(); setPayOpen(false); toast.success("Pagamento registrado!"); },
+    onSuccess: () => {
+      utils.payments.list.invalidate();
+      utils.payments.billingForecast.invalidate();
+      utils.dashboard.stats.invalidate();
+      utils.dashboard.monthlyRevenue.invalidate();
+      refreshClientIntelligence();
+      setPayOpen(false);
+      toast.success("Pagamento registrado!");
+    },
   });
   const confirmPayment = trpc.payments.confirm.useMutation({
     onSuccess: () => {
@@ -163,6 +190,7 @@ export default function ClientDetailPage() {
       utils.payments.billingForecast.invalidate();
       utils.dashboard.stats.invalidate();
       utils.dashboard.monthlyRevenue.invalidate();
+      refreshClientIntelligence();
       toast.success("Pagamento confirmado!");
     },
     onError: () => toast.error("Erro ao confirmar pagamento"),
@@ -173,11 +201,21 @@ export default function ClientDetailPage() {
       utils.payments.billingForecast.invalidate();
       utils.dashboard.stats.invalidate();
       utils.dashboard.monthlyRevenue.invalidate();
+      refreshClientIntelligence();
       toast.success("Baixa desfeita. Pagamento voltou para pendente.");
     },
     onError: () => toast.error("Erro ao desfazer baixa"),
   });
-  const deletePayment = trpc.payments.delete.useMutation({ onSuccess: () => { utils.payments.list.invalidate(); toast.success("Pagamento removido!"); } });
+  const deletePayment = trpc.payments.delete.useMutation({
+    onSuccess: () => {
+      utils.payments.list.invalidate();
+      utils.payments.billingForecast.invalidate();
+      utils.dashboard.stats.invalidate();
+      utils.dashboard.monthlyRevenue.invalidate();
+      refreshClientIntelligence();
+      toast.success("Pagamento removido!");
+    },
+  });
 
   // Document upload
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -252,6 +290,8 @@ export default function ClientDetailPage() {
           {client.startDate && <div className="text-sm"><span className="text-muted-foreground">Início:</span> {formatDate(client.startDate)}</div>}
         </CardContent>
       </Card>
+
+      <Client360Overview clientId={clientId} />
 
       <Tabs defaultValue="services" className="space-y-4">
         <TabsList>
@@ -444,7 +484,7 @@ export default function ClientDetailPage() {
               createPayment.mutate({
                 clientId,
                 amount: payForm.amount,
-                dueDate: new Date(payForm.dueDate).getTime(),
+                dueDate: parseLocalDate(payForm.dueDate),
                 status: "pending",
                 description: payForm.description || undefined,
               });
