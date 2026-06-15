@@ -152,6 +152,7 @@ async function remove(table: TableName, id: number) {
 
 const byNewest = (a: LocalRecord, b: LocalRecord) => asNumber(new Date(b.createdAt).getTime()) - asNumber(new Date(a.createdAt).getTime());
 const byDateDesc = (field: string) => (a: LocalRecord, b: LocalRecord) => asNumber(b[field]) - asNumber(a[field]);
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) throw new Error("User openId is required for upsert");
@@ -193,6 +194,7 @@ export async function createClient(data: Omit<InsertClient, "id" | "createdAt" |
     videoQuantity: 0,
     imageQuantity: 0,
     monthlyValue: "0",
+    contractStatus: "pending",
     ...data,
   });
   return { id: record.id };
@@ -509,12 +511,13 @@ export async function getTodayCommandCenter() {
   const today = new Date();
   const { start, end } = getDayRange(today);
   const threeDaysEnd = end + 3 * 24 * 60 * 60 * 1000;
-  const [tasks, events, payments, clients, production] = await Promise.all([
+  const [tasks, events, payments, clients, production, documents] = await Promise.all([
     listTasks(),
     listEvents(start, end),
     listPayments(),
     listClients(),
     list("productionTracking"),
+    listDocuments(),
   ]);
 
   const clientsById = new Map(clients.map(client => [client.id, client]));
@@ -540,6 +543,13 @@ export async function getTodayCommandCenter() {
   const year = today.getFullYear();
   const month = today.getMonth() + 1;
   const activeClients = clients.filter(client => client.status === "active");
+  const contractAlerts = activeClients
+    .map(client => buildContractInsight(client, documents))
+    .filter(contract => ["missing", "pending", "expired", "due_7", "due_15", "due_30"].includes(contract.key))
+    .sort((a, b) => {
+      const severityWeight = { critical: 0, warning: 1, info: 2, ok: 3 };
+      return severityWeight[a.severity] - severityWeight[b.severity] || asNumber(a.daysUntil ?? 9999) - asNumber(b.daysUntil ?? 9999);
+    });
   const productionPending = activeClients
     .map(client => {
       const tracking = production.find(item => item.clientId === client.id && item.year === year && item.month === month);
@@ -566,6 +576,7 @@ export async function getTodayCommandCenter() {
   });
   overduePayments.forEach(payment => attentionClientIds.add(payment.clientId));
   productionPending.slice(0, 10).forEach(item => attentionClientIds.add(item.clientId));
+  contractAlerts.slice(0, 10).forEach(item => attentionClientIds.add(item.clientId));
   const clientsNeedingAttention = Array.from(attentionClientIds)
     .map(id => clientsById.get(id))
     .filter(Boolean)
@@ -577,6 +588,7 @@ export async function getTodayCommandCenter() {
         overdueTasks.some(task => task.clientId === client!.id) ? "tarefas atrasadas" : null,
         overduePayments.some(payment => payment.clientId === client!.id) ? "pagamento atrasado" : null,
         productionPending.some(item => item.clientId === client!.id) ? "produção pendente" : null,
+        contractAlerts.some(item => item.clientId === client!.id) ? "contrato em atenção" : null,
       ].filter(Boolean),
     }));
 
@@ -584,11 +596,12 @@ export async function getTodayCommandCenter() {
     overduePayments.length > 0 ? `${overduePayments.length} pagamento(s) atrasado(s)` : null,
     overdueTasks.length > 0 ? `${overdueTasks.length} tarefa(s) atrasada(s)` : null,
     productionPending.length > 0 ? `${productionPending.length} cliente(s) com produção pendente` : null,
+    contractAlerts.length > 0 ? `${contractAlerts.length} contrato(s) em atenção` : null,
   ].filter(Boolean);
 
   return {
     date: start,
-    summary: `Hoje você tem ${tasksDueToday.length} tarefa(s) vencendo, ${overdueTasks.length} atrasada(s), ${meetingsToday.length} reunião(ões), ${paymentsDueToday.length} pagamento(s) vencendo e ${productionPending.length} cliente(s) com produção em aberto.`,
+    summary: `Hoje você tem ${tasksDueToday.length} tarefa(s) vencendo, ${overdueTasks.length} atrasada(s), ${meetingsToday.length} reunião(ões), ${paymentsDueToday.length} pagamento(s) vencendo, ${productionPending.length} cliente(s) com produção em aberto e ${contractAlerts.length} contrato(s) em atenção.`,
     counts: {
       tasksDueToday: tasksDueToday.length,
       overdueTasks: overdueTasks.length,
@@ -598,6 +611,7 @@ export async function getTodayCommandCenter() {
       paymentsDueSoon: paymentsDueSoon.length,
       overduePayments: overduePayments.length,
       productionPending: productionPending.length,
+      contractAlerts: contractAlerts.length,
       clientsNeedingAttention: clientsNeedingAttention.length,
       criticalAlerts: criticalAlerts.length,
     },
@@ -608,6 +622,7 @@ export async function getTodayCommandCenter() {
     paymentsDueSoon,
     overduePayments,
     productionPending: productionPending.slice(0, 8),
+    contractAlerts: contractAlerts.slice(0, 8),
     clientsNeedingAttention,
     criticalAlerts,
   };
@@ -638,7 +653,18 @@ export async function globalSearch(query: string) {
       type: "clients",
       label: "Clientes",
       items: clients
-        .filter(client => textMatches(q, [client.companyName, client.contactName, client.email, client.phone, client.whatsapp, client.notes]))
+        .filter(client => textMatches(q, [
+          client.companyName,
+          client.contactName,
+          client.email,
+          client.phone,
+          client.whatsapp,
+          client.notes,
+          client.contractPaymentMethod,
+          client.contractAdjustment,
+          client.contractNotes,
+          client.contractStatus,
+        ]))
         .slice(0, limit)
         .map(client => ({
           id: client.id,
@@ -806,6 +832,86 @@ function serviceListForClient(client: LocalRecord) {
   return services;
 }
 
+function formatContractDueLabel(daysUntil: number | null, type?: string | null) {
+  const action = type === "renovação" ? "Renova" : "Vence";
+  if (daysUntil === null) return "Sem data de contrato";
+  if (daysUntil < 0) return type === "renovação" ? "Renovação vencida" : "Contrato vencido";
+  if (daysUntil === 0) return `${action} hoje`;
+  if (daysUntil === 1) return `${action} amanhã`;
+  return `${action} em ${daysUntil} dias`;
+}
+
+export function buildContractInsight(client: Record<string, any>, documents: Record<string, any>[] = [], referenceDate = new Date()) {
+  const hasContractDocument = documents.some(document => document.clientId === client.id && document.category === "contract");
+  const hasContractFields = Boolean(
+    client.contractRenewalDate ||
+    client.contractEndDate ||
+    client.contractPaymentMethod ||
+    client.contractDueDay ||
+    client.contractAdjustment ||
+    client.contractNotes
+  );
+  const explicitStatus = client.contractStatus ?? "pending";
+  const hasContract = hasContractDocument || hasContractFields || explicitStatus === "active";
+  const { start } = getDayRange(referenceDate);
+  const milestones = [
+    client.contractEndDate ? { type: "vencimento", date: getDayRange(new Date(asNumber(client.contractEndDate))).start } : null,
+    client.contractRenewalDate ? { type: "renovação", date: getDayRange(new Date(asNumber(client.contractRenewalDate))).start } : null,
+  ]
+    .filter((item): item is { type: string; date: number } => Boolean(item?.date))
+    .sort((a, b) => a.date - b.date);
+  const overdueMilestone = [...milestones].reverse().find(item => item.date < start);
+  const nextMilestone = milestones.find(item => item.date >= start);
+  const milestone = overdueMilestone ?? nextMilestone ?? null;
+  const daysUntil = milestone ? Math.ceil((milestone.date - start) / DAY_MS) : null;
+
+  let key = "active";
+  let severity: "critical" | "warning" | "info" | "ok" = "ok";
+
+  if (explicitStatus === "cancelled") {
+    key = "cancelled";
+    severity = "ok";
+  } else if (!hasContract) {
+    key = "missing";
+    severity = "warning";
+  } else if (explicitStatus === "expired" || (daysUntil !== null && daysUntil < 0)) {
+    key = "expired";
+    severity = "critical";
+  } else if (daysUntil !== null && daysUntil <= 7) {
+    key = "due_7";
+    severity = "critical";
+  } else if (daysUntil !== null && daysUntil <= 15) {
+    key = "due_15";
+    severity = "warning";
+  } else if (daysUntil !== null && daysUntil <= 30) {
+    key = "due_30";
+    severity = "info";
+  } else if (explicitStatus === "pending") {
+    key = "pending";
+    severity = "info";
+  }
+
+  return {
+    clientId: client.id,
+    companyName: client.companyName,
+    hasContract,
+    hasContractDocument,
+    key,
+    severity,
+    label: key === "missing" ? "Sem contrato cadastrado" : key === "pending" ? "Contrato pendente" : formatContractDueLabel(daysUntil, milestone?.type),
+    daysUntil,
+    milestoneDate: milestone?.date ?? null,
+    milestoneType: milestone?.type ?? null,
+    renewalDate: client.contractRenewalDate ?? null,
+    endDate: client.contractEndDate ?? null,
+    paymentMethod: client.contractPaymentMethod ?? null,
+    dueDay: client.contractDueDay ?? null,
+    adjustment: client.contractAdjustment ?? null,
+    notes: client.contractNotes ?? null,
+    status: explicitStatus,
+  };
+}
+
 function clientHealthStatus(score: number, tags: string[]) {
   if (tags.includes("inadimplente")) return { key: "inadimplente", label: "Inadimplente" };
   if (score < 45) return { key: "risco", label: "Risco" };
@@ -867,7 +973,8 @@ async function buildClientHealth(client: LocalRecord, context?: {
   const productionProgress = totalContracted > 0 ? Math.min(100, roundMoney((totalDelivered / totalContracted) * 100)) : 100;
   const productionBehind = totalContracted > 0 && productionProgress < Math.max(35, monthProgress * 100 - 20);
   const serviceCount = serviceListForClient(client).length;
-  const hasContract = documents.some(document => document.clientId === client.id && document.category === "contract");
+  const contract = buildContractInsight(client, documents);
+  const hasContract = contract.hasContract;
   const estimatedWorkloadCost = openTasks.length * 80 + videoTarget * 150 + imageTarget * 40;
   const estimatedMargin = monthlyValue > 0 ? roundMoney(((monthlyValue - estimatedWorkloadCost) / monthlyValue) * 100) : 0;
   const operationalLoad = monthlyValue > 0 ? roundMoney((estimatedWorkloadCost / monthlyValue) * 100) : openTasks.length > 0 ? 100 : 0;
@@ -905,9 +1012,21 @@ async function buildClientHealth(client: LocalRecord, context?: {
     tags.push("sobrecarregado");
     reasons.push("alta demanda operacional para o contrato");
   }
-  if (!hasContract) {
-    score -= 6;
-    reasons.push("contrato não anexado");
+  if (contract.key === "missing") {
+    score -= 8;
+    reasons.push("sem contrato cadastrado");
+  } else if (contract.key === "expired") {
+    score -= 18;
+    reasons.push("contrato vencido");
+  } else if (contract.key === "due_7") {
+    score -= 8;
+    reasons.push(contract.label.toLowerCase());
+  } else if (contract.key === "due_15" || contract.key === "due_30") {
+    score -= 4;
+    reasons.push(contract.label.toLowerCase());
+  } else if (contract.key === "pending") {
+    score -= 5;
+    reasons.push("contrato pendente");
   }
   if (serviceCount <= 1 && client.status === "active") {
     tags.push("upsell");
@@ -952,6 +1071,7 @@ async function buildClientHealth(client: LocalRecord, context?: {
       estimatedMargin,
       operationalLoad,
     },
+    contract,
     latestActivityAt: Math.max(
       ...clientTasks.map(task => asNumber(new Date(task.updatedAt).getTime())),
       ...clientPayments.map(payment => asNumber(payment.paidDate ?? payment.dueDate)),
@@ -987,6 +1107,7 @@ export async function getClientIntelligence() {
       attention: health.filter(item => item.status.key === "atencao" || item.status.key === "sobrecarregado").length,
       risk: health.filter(item => item.status.key === "risco").length,
       delinquent: health.filter(item => item.status.key === "inadimplente").length,
+      contractAlerts: health.filter(item => ["missing", "pending", "expired", "due_7", "due_15", "due_30"].includes(item.contract.key)).length,
       averageScore: health.length ? Math.round(health.reduce((sum, item) => sum + item.score, 0) / health.length) : 0,
     },
     health,

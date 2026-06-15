@@ -12,7 +12,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Phone, Mail, MessageCircle, FileText, Plus, Trash2, Download, CheckCircle, Clock, AlertTriangle, Undo2 } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MessageCircle, FileText, Plus, Trash2, Download, CheckCircle, Clock, AlertTriangle, Undo2, CalendarClock, FileCheck2, TrendingUp } from "lucide-react";
 import { useLocation, useParams } from "wouter";
 import { toast } from "sonner";
 import { Client360Overview } from "@/components/ClientIntelligenceDashboard";
@@ -42,6 +42,22 @@ const paymentStatusMap: Record<string, { label: string; icon: any; color: string
   pending: { label: "Pendente", icon: Clock, color: "text-amber-600" },
   overdue: { label: "Atrasado", icon: AlertTriangle, color: "text-destructive" },
 };
+
+const contractStatusMap: Record<string, { label: string; className: string }> = {
+  active: { label: "Ativo", className: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+  pending: { label: "Pendente", className: "border-amber-200 bg-amber-50 text-amber-700" },
+  expired: { label: "Vencido", className: "border-rose-200 bg-rose-50 text-rose-700" },
+  cancelled: { label: "Cancelado", className: "border-muted bg-muted text-muted-foreground" },
+};
+
+function FieldRow({ label, value }: { label: string; value?: string | number | null }) {
+  return (
+    <div className="rounded-lg border bg-muted/20 p-3">
+      <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-foreground">{value || "-"}</p>
+    </div>
+  );
+}
 
 function ProductionTab({ clientId, client }: { clientId: number; client: any }) {
   const currentMonth = new Date().toISOString().slice(0, 7);
@@ -294,8 +310,9 @@ export default function ClientDetailPage() {
       <Client360Overview clientId={clientId} />
 
       <Tabs defaultValue="services" className="space-y-4">
-        <TabsList>
+        <TabsList className="h-auto flex-wrap justify-start">
           <TabsTrigger value="services">Serviços</TabsTrigger>
+          <TabsTrigger value="contract">Contrato</TabsTrigger>
           <TabsTrigger value="deliveries">Entregas</TabsTrigger>
           <TabsTrigger value="production">Produção</TabsTrigger>
           <TabsTrigger value="payments">Financeiro</TabsTrigger>
@@ -310,6 +327,57 @@ export default function ClientDetailPage() {
               <Badge variant={client.metaAds ? "default" : "outline"}>{client.metaAds ? "Meta Ads" : "Meta Ads (não)"}</Badge>
               <Badge variant={client.googleAds ? "default" : "outline"}>{client.googleAds ? "Google Ads" : "Google Ads (não)"}</Badge>
               <Badge variant={client.socialMedia ? "default" : "outline"}>{client.socialMedia ? "Redes Sociais" : "Redes Sociais (não)"}</Badge>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="contract">
+          <Card className="shadow-sm">
+            <CardHeader className="flex flex-row items-start justify-between gap-3">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <FileCheck2 className="h-4 w-4 text-primary" />
+                  Controle de Contrato
+                </CardTitle>
+                <p className="mt-1 text-xs text-muted-foreground">Renovação, vencimento, cobrança, reajuste e observações formais do cliente.</p>
+              </div>
+              <Badge variant="outline" className={contractStatusMap[client.contractStatus || "pending"]?.className}>
+                {contractStatusMap[client.contractStatus || "pending"]?.label ?? "Pendente"}
+              </Badge>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-3">
+                <FieldRow label="Data de início" value={client.startDate ? formatDate(client.startDate) : "-"} />
+                <FieldRow label="Data de renovação" value={client.contractRenewalDate ? formatDate(client.contractRenewalDate) : "-"} />
+                <FieldRow label="Data de vencimento" value={client.contractEndDate ? formatDate(client.contractEndDate) : "-"} />
+                <FieldRow label="Valor contratado" value={formatCurrency(client.monthlyValue)} />
+                <FieldRow label="Dia de vencimento" value={client.contractDueDay ? `Dia ${client.contractDueDay}` : "-"} />
+                <FieldRow label="Forma de pagamento" value={client.contractPaymentMethod || "-"} />
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-lg border bg-muted/20 p-3">
+                  <div className="mb-2 flex items-center gap-2 text-muted-foreground">
+                    <TrendingUp className="h-4 w-4" />
+                    <p className="text-xs font-medium uppercase">Reajuste previsto</p>
+                  </div>
+                  <p className="text-sm font-semibold text-foreground">{client.contractAdjustment || "-"}</p>
+                </div>
+                <div className="rounded-lg border bg-muted/20 p-3">
+                  <div className="mb-2 flex items-center gap-2 text-muted-foreground">
+                    <CalendarClock className="h-4 w-4" />
+                    <p className="text-xs font-medium uppercase">Próximo marco</p>
+                  </div>
+                  <p className="text-sm font-semibold text-foreground">
+                    {client.contractEndDate ? `Vencimento em ${formatDate(client.contractEndDate)}` : client.contractRenewalDate ? `Renovação em ${formatDate(client.contractRenewalDate)}` : "Sem data contratual"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-lg border bg-muted/20 p-3">
+                <p className="mb-2 text-xs font-medium uppercase text-muted-foreground">Observações contratuais</p>
+                <p className="text-sm leading-6 text-foreground whitespace-pre-wrap">{client.contractNotes || "Nenhuma observação contratual registrada."}</p>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

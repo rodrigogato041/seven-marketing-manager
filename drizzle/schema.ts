@@ -26,6 +26,13 @@ export const clients = mysqlTable("clients", {
   email: varchar("email", { length: 320 }),
   monthlyValue: decimal("monthlyValue", { precision: 12, scale: 2 }).default("0"),
   startDate: bigint("startDate", { mode: "number" }),
+  contractRenewalDate: bigint("contractRenewalDate", { mode: "number" }),
+  contractEndDate: bigint("contractEndDate", { mode: "number" }),
+  contractPaymentMethod: varchar("contractPaymentMethod", { length: 120 }),
+  contractDueDay: int("contractDueDay"),
+  contractAdjustment: varchar("contractAdjustment", { length: 255 }),
+  contractNotes: text("contractNotes"),
+  contractStatus: mysqlEnum("contractStatus", ["active", "pending", "expired", "cancelled"]).default("pending").notNull(),
   status: mysqlEnum("status", ["active", "paused", "cancelled"]).default("active").notNull(),
   // Services
   metaAds: boolean("metaAds").default(false).notNull(),

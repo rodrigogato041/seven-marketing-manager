@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   CircleDollarSign,
   ClipboardList,
+  FileCheck2,
   Film,
   Users,
 } from "lucide-react";
@@ -116,11 +117,12 @@ export function TodayCommandCenter() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4 p-4">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <CountPill label="Tarefas hoje" value={data.counts.tasksDueToday} tone="text-blue-700" />
           <CountPill label="Atrasadas" value={data.counts.overdueTasks} tone="text-rose-700" />
           <CountPill label="Reuniões" value={data.counts.meetingsToday} tone="text-violet-700" />
           <CountPill label="Produções" value={data.counts.productionPending} tone="text-amber-700" />
+          <CountPill label="Contratos" value={data.counts.contractAlerts ?? 0} tone="text-cyan-700" />
         </div>
 
         {data.criticalAlerts.length > 0 ? (
@@ -136,7 +138,7 @@ export function TodayCommandCenter() {
           </div>
         ) : null}
 
-        <div className="grid gap-3 xl:grid-cols-4">
+        <div className="grid gap-3 xl:grid-cols-5">
           <MiniList
             title="Tarefas críticas"
             icon={ClipboardList}
@@ -200,6 +202,22 @@ export function TodayCommandCenter() {
                 <p className="text-xs text-muted-foreground">
                   {item.pendingVideos} vídeos · {item.pendingImages} imagens
                 </p>
+              </button>
+            )}
+          />
+          <MiniList
+            title="Contratos"
+            icon={FileCheck2}
+            items={data.contractAlerts ?? []}
+            empty="Nenhum contrato vencendo."
+            render={(contract: any) => (
+              <button
+                key={`contract-${contract.clientId}`}
+                className="block w-full rounded-md border bg-muted/20 p-2 text-left transition hover:border-primary/30 hover:bg-primary/5"
+                onClick={() => setLocation(`/clientes/${contract.clientId}`)}
+              >
+                <p className="truncate text-sm font-medium">{contract.companyName}</p>
+                <p className="text-xs text-muted-foreground">{contract.label}</p>
               </button>
             )}
           />

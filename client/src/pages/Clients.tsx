@@ -24,6 +24,18 @@ function formatCurrency(value: string | number | null) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(num);
 }
 
+function parseLocalDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return Date.now();
+  return new Date(year, month - 1, day, 12, 0, 0, 0).getTime();
+}
+
+function formatInputDate(value?: number | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function getInitials(name: string) {
   return name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 }
@@ -42,6 +54,13 @@ type ClientForm = {
   email: string;
   monthlyValue: string;
   startDate: string;
+  contractRenewalDate: string;
+  contractEndDate: string;
+  contractPaymentMethod: string;
+  contractDueDay: string;
+  contractAdjustment: string;
+  contractNotes: string;
+  contractStatus: "active" | "pending" | "expired" | "cancelled";
   status: "active" | "paused" | "cancelled";
   metaAds: boolean;
   googleAds: boolean;
@@ -55,6 +74,8 @@ type ClientForm = {
 const emptyForm: ClientForm = {
   companyName: "", contactName: "", phone: "", whatsapp: "", email: "",
   monthlyValue: "0", startDate: "", status: "active",
+  contractRenewalDate: "", contractEndDate: "", contractPaymentMethod: "",
+  contractDueDay: "", contractAdjustment: "", contractNotes: "", contractStatus: "pending",
   metaAds: false, googleAds: false, socialMedia: false,
   videoQuantity: "0", imageQuantity: "0", otherServices: "", notes: "",
 };
@@ -69,8 +90,13 @@ export default function ClientsPage() {
   const utils = trpc.useUtils();
   const { data: clientsList, isLoading } = trpc.clients.list.useQuery();
   const { data: intelligence } = trpc.clients.intelligence.useQuery(undefined, { refetchInterval: 30000 });
-  const createMutation = trpc.clients.create.useMutation({ onSuccess: () => { utils.clients.list.invalidate(); setOpen(false); toast.success("Cliente criado com sucesso!"); } });
-  const updateMutation = trpc.clients.update.useMutation({ onSuccess: () => { utils.clients.list.invalidate(); setOpen(false); toast.success("Cliente atualizado!"); } });
+  const refreshClientViews = () => {
+    utils.clients.list.invalidate();
+    utils.clients.intelligence.invalidate();
+    utils.dashboard.today.invalidate();
+  };
+  const createMutation = trpc.clients.create.useMutation({ onSuccess: () => { refreshClientViews(); setOpen(false); toast.success("Cliente criado com sucesso!"); } });
+  const updateMutation = trpc.clients.update.useMutation({ onSuccess: () => { refreshClientViews(); setOpen(false); toast.success("Cliente atualizado!"); } });
   const deleteMutation = trpc.clients.delete.useMutation({ onSuccess: () => { utils.clients.list.invalidate(); toast.success("Cliente removido!"); } });
   const uploadLogoMutation = trpc.clients.uploadLogo.useMutation({ onSuccess: () => { utils.clients.list.invalidate(); toast.success("Logo atualizada!"); } });
 
@@ -98,7 +124,14 @@ export default function ClientsPage() {
       whatsapp: c.whatsapp || "",
       email: c.email || "",
       monthlyValue: c.monthlyValue || "0",
-      startDate: c.startDate ? new Date(c.startDate).toISOString().split("T")[0] : "",
+      startDate: formatInputDate(c.startDate),
+      contractRenewalDate: formatInputDate(c.contractRenewalDate),
+      contractEndDate: formatInputDate(c.contractEndDate),
+      contractPaymentMethod: c.contractPaymentMethod || "",
+      contractDueDay: c.contractDueDay ? String(c.contractDueDay) : "",
+      contractAdjustment: c.contractAdjustment || "",
+      contractNotes: c.contractNotes || "",
+      contractStatus: c.contractStatus || "pending",
       status: c.status,
       metaAds: c.metaAds,
       googleAds: c.googleAds,
@@ -119,7 +152,14 @@ export default function ClientsPage() {
       whatsapp: form.whatsapp || undefined,
       email: form.email || undefined,
       monthlyValue: form.monthlyValue,
-      startDate: form.startDate ? new Date(form.startDate).getTime() : undefined,
+      startDate: form.startDate ? parseLocalDate(form.startDate) : undefined,
+      contractRenewalDate: form.contractRenewalDate ? parseLocalDate(form.contractRenewalDate) : null,
+      contractEndDate: form.contractEndDate ? parseLocalDate(form.contractEndDate) : null,
+      contractPaymentMethod: form.contractPaymentMethod || null,
+      contractDueDay: form.contractDueDay ? parseInt(form.contractDueDay) : null,
+      contractAdjustment: form.contractAdjustment || null,
+      contractNotes: form.contractNotes || null,
+      contractStatus: form.contractStatus,
       status: form.status,
       metaAds: form.metaAds,
       googleAds: form.googleAds,
@@ -256,7 +296,7 @@ export default function ClientsPage() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editId ? "Editar Cliente" : "Novo Cliente"}</DialogTitle>
           </DialogHeader>
@@ -299,6 +339,54 @@ export default function ClientsPage() {
                   <SelectItem value="cancelled">Cancelado</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="col-span-full rounded-lg border bg-muted/20 p-4">
+              <p className="text-sm font-semibold text-foreground mb-3">Contrato</p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Status do Contrato</Label>
+                  <Select value={form.contractStatus} onValueChange={v => setForm(f => ({ ...f, contractStatus: v as any }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Ativo</SelectItem>
+                      <SelectItem value="pending">Pendente</SelectItem>
+                      <SelectItem value="expired">Vencido</SelectItem>
+                      <SelectItem value="cancelled">Cancelado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Dia de Vencimento</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={form.contractDueDay}
+                    onChange={e => setForm(f => ({ ...f, contractDueDay: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Data de Renovação</Label>
+                  <Input type="date" value={form.contractRenewalDate} onChange={e => setForm(f => ({ ...f, contractRenewalDate: e.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Data de Vencimento</Label>
+                  <Input type="date" value={form.contractEndDate} onChange={e => setForm(f => ({ ...f, contractEndDate: e.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Forma de Pagamento</Label>
+                  <Input value={form.contractPaymentMethod} onChange={e => setForm(f => ({ ...f, contractPaymentMethod: e.target.value }))} placeholder="PIX, boleto, cartão..." />
+                </div>
+                <div className="space-y-2">
+                  <Label>Reajuste Previsto</Label>
+                  <Input value={form.contractAdjustment} onChange={e => setForm(f => ({ ...f, contractAdjustment: e.target.value }))} placeholder="Ex.: 10% ao renovar" />
+                </div>
+                <div className="col-span-full space-y-2">
+                  <Label>Observações Contratuais</Label>
+                  <Textarea value={form.contractNotes} onChange={e => setForm(f => ({ ...f, contractNotes: e.target.value }))} rows={2} />
+                </div>
+              </div>
             </div>
 
             <div className="col-span-full">
