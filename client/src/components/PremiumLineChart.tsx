@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend, ReferenceArea,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, Legend, LabelList, ReferenceArea,
 } from "recharts";
 
 export interface ChartLine {
@@ -62,48 +62,6 @@ function PremiumTooltip({
   );
 }
 
-function CustomDot({ cx, cy, value, stroke, showValues, valueFormatter }: any) {
-  if (cx == null || cy == null) return null;
-  return (
-    <g>
-      {/* Outer glow */}
-      <circle cx={cx} cy={cy} r={8} fill={stroke} opacity={0.1} />
-      {/* White border */}
-      <circle cx={cx} cy={cy} r={5} fill="white" stroke={stroke} strokeWidth={2.5} />
-      {/* Inner dot */}
-      <circle cx={cx} cy={cy} r={2} fill={stroke} />
-      {/* Value label */}
-      {showValues && value != null && (
-        <text
-          x={cx}
-          y={cy - 14}
-          textAnchor="middle"
-          fill={stroke}
-          fontSize={10}
-          fontWeight={700}
-          style={{ textShadow: "0 1px 2px rgba(255,255,255,0.9)" }}
-        >
-          {valueFormatter ? valueFormatter(value) : value?.toLocaleString("pt-BR")}
-        </text>
-      )}
-    </g>
-  );
-}
-
-function CustomActiveDot({ cx, cy, stroke }: any) {
-  if (cx == null || cy == null) return null;
-  return (
-    <g>
-      <circle cx={cx} cy={cy} r={12} fill={stroke} opacity={0.08}>
-        <animate attributeName="r" values="10;14;10" dur="1.5s" repeatCount="indefinite" />
-        <animate attributeName="opacity" values="0.08;0.15;0.08" dur="1.5s" repeatCount="indefinite" />
-      </circle>
-      <circle cx={cx} cy={cy} r={6} fill="white" stroke={stroke} strokeWidth={3} />
-      <circle cx={cx} cy={cy} r={2.5} fill={stroke} />
-    </g>
-  );
-}
-
 export default function PremiumLineChart({
   data,
   lines,
@@ -143,17 +101,21 @@ export default function PremiumLineChart({
 
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <LineChart data={data} margin={{ top: 20, right: 30, left: 10, bottom: 5 }}>
+      <BarChart
+        data={data}
+        margin={{ top: showValues ? 34 : 20, right: 24, left: 10, bottom: 5 }}
+        barCategoryGap="26%"
+        barGap={8}
+      >
         <defs>
           {lines.map((line) => (
-            <linearGradient key={`grad-${line.dataKey}`} id={`gradient-${line.dataKey}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={line.color} stopOpacity={0.15} />
-              <stop offset="100%" stopColor={line.color} stopOpacity={0.01} />
+            <linearGradient key={`grad-${line.dataKey}`} id={`bar-gradient-${line.dataKey}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={line.color} stopOpacity={0.92} />
+              <stop offset="100%" stopColor={line.color} stopOpacity={0.72} />
             </linearGradient>
           ))}
-          {/* Drop shadow for lines */}
-          <filter id="lineShadow" x="-5%" y="-5%" width="110%" height="120%">
-            <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000" floodOpacity="0.08" />
+          <filter id="barShadow" x="-8%" y="-8%" width="116%" height="130%">
+            <feDropShadow dx="0" dy="6" stdDeviation="5" floodColor="#0f172a" floodOpacity="0.08" />
           </filter>
         </defs>
 
@@ -201,9 +163,8 @@ export default function PremiumLineChart({
             />
           }
           cursor={{
-            stroke: "#d1d5db",
-            strokeWidth: 1,
-            strokeDasharray: "4 4",
+            fill: "#f1f5f9",
+            opacity: 0.65,
           }}
         />
 
@@ -218,34 +179,26 @@ export default function PremiumLineChart({
         />
 
         {lines.map((line) => (
-          <Line
+          <Bar
             key={line.dataKey}
-            type="monotone"
             dataKey={line.dataKey}
             name={line.name}
-            stroke={line.color}
-            strokeWidth={line.strokeWidth || 3}
-            strokeDasharray={line.dashed ? "8 4" : undefined}
-            filter="url(#lineShadow)"
-            dot={showDots ? (props: any) => {
-              const { key, ...rest } = props;
-              return (
-                <CustomDot
-                  key={key}
-                  {...rest}
-                  showValues={showValues}
-                  valueFormatter={defaultValueFormatter}
-                />
-              );
-            } : false}
-            activeDot={(props: any) => {
-              const { key, ...rest } = props;
-              return <CustomActiveDot key={key} {...rest} />;
-            }}
-            connectNulls
-          />
+            fill={`url(#bar-gradient-${line.dataKey})`}
+            radius={[7, 7, 2, 2]}
+            maxBarSize={46}
+            filter={showDots ? "url(#barShadow)" : undefined}
+          >
+            {showValues && (
+              <LabelList
+                dataKey={line.dataKey}
+                position="top"
+                formatter={(value: number) => defaultValueFormatter(value)}
+                className="fill-slate-600 text-[10px] font-semibold"
+              />
+            )}
+          </Bar>
         ))}
-      </LineChart>
+      </BarChart>
     </ResponsiveContainer>
   );
 }
