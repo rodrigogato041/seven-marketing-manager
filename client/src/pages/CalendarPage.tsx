@@ -247,10 +247,13 @@ export default function CalendarPage() {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Calendário</h1>
-          <p className="text-muted-foreground text-sm mt-1">Gerencie sua agenda e eventos</p>
+          <div className="mb-2 inline-flex rounded-md border bg-white px-2.5 py-1 text-xs font-medium text-muted-foreground shadow-sm">
+            Agenda e compromissos
+          </div>
+          <h1 className="text-2xl font-semibold text-foreground">Calendário</h1>
+          <p className="text-muted-foreground text-sm mt-1">Prazos, vencimentos e eventos em uma linha do tempo clara.</p>
         </div>
-        <Button onClick={() => openNewEvent()} className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white shadow-sm">
+        <Button onClick={() => openNewEvent()}>
           <Plus className="h-4 w-4 mr-1.5" /> Novo Evento
         </Button>
       </div>
@@ -619,7 +622,7 @@ function EventDialog({ open, onClose, event, defaultDate, clients, collaborators
           )}
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose}>Cancelar</Button>
-            <Button onClick={handleSubmit} disabled={isLoading} className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white">
+            <Button onClick={handleSubmit} disabled={isLoading}>
               {event ? "Salvar" : "Criar"}
             </Button>
           </div>

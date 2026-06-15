@@ -115,12 +115,15 @@ export default function TasksPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Tarefas</h1>
-          <p className="text-muted-foreground text-sm mt-1">Quadro Kanban para gestão de tarefas</p>
+          <div className="mb-2 inline-flex rounded-md border bg-white px-2.5 py-1 text-xs font-medium text-muted-foreground shadow-sm">
+            Producao e entregas
+          </div>
+          <h1 className="text-2xl font-semibold">Tarefas</h1>
+          <p className="text-muted-foreground text-sm mt-1">Quadro operacional para acompanhar prioridades e responsáveis.</p>
         </div>
-        <Button onClick={() => { setForm(emptyForm); setOpen(true); }} className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white shadow-sm">
+        <Button onClick={() => { setForm(emptyForm); setOpen(true); }}>
           <Plus className="h-4 w-4 mr-2" /> Nova Tarefa
         </Button>
       </div>
@@ -129,7 +132,7 @@ export default function TasksPage() {
         {columns.map(col => (
           <div
             key={col.id}
-            className="bg-muted/30 rounded-xl p-3 min-h-[400px]"
+            className="bg-muted/45 rounded-lg border p-3 min-h-[400px]"
             onDragOver={handleDragOver}
             onDrop={e => handleDrop(e, col.id)}
           >
@@ -244,7 +247,7 @@ export default function TasksPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button onClick={handleSave} disabled={!form.title || createMut.isPending}
-              className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white">
+              >
               {createMut.isPending ? "Criando..." : "Criar Tarefa"}
             </Button>
           </DialogFooter>

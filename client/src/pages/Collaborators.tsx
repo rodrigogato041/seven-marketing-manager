@@ -125,17 +125,20 @@ export default function CollaboratorsPage() {
     <div className="space-y-6">
       <input ref={photoInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={onPhotoFileChange} />
 
-      <div className="flex items-center justify-between flex-wrap gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Colaboradores</h1>
-          <p className="text-muted-foreground text-sm mt-1">Equipe e freelancers da agência</p>
+          <div className="mb-2 inline-flex rounded-md border bg-white px-2.5 py-1 text-xs font-medium text-muted-foreground shadow-sm">
+            Pessoas e custos
+          </div>
+          <h1 className="text-2xl font-semibold">Colaboradores</h1>
+          <p className="text-muted-foreground text-sm mt-1">Equipe, freelancers e vencimentos em uma visao simples.</p>
         </div>
-        <Button onClick={openNew} className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white shadow-sm">
+        <Button onClick={openNew}>
           <Plus className="h-4 w-4 mr-2" /> Adicionar Colaborador
         </Button>
       </div>
 
-      <div className="relative max-w-sm">
+      <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input placeholder="Buscar colaboradores..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
       </div>
@@ -163,12 +166,12 @@ export default function CollaboratorsPage() {
                     <div className="relative">
                       <Avatar className="h-11 w-11 border-2 border-background shadow-sm">
                         {c.photoUrl && <AvatarImage src={c.photoUrl} alt={c.name} />}
-                        <AvatarFallback className="bg-gradient-to-br from-blue-100 to-indigo-50 text-blue-700 text-xs font-bold">
+                        <AvatarFallback className="bg-blue-50 text-blue-700 text-xs font-bold">
                           {getInitials(c.name)}
                         </AvatarFallback>
                       </Avatar>
                       <button
-                        className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-primary text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                        className="absolute -bottom-1 -right-1 h-5 w-5 rounded-md bg-primary text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
                         onClick={() => handlePhotoUpload(c.id)}
                         title="Alterar foto"
                       >
@@ -284,7 +287,7 @@ export default function CollaboratorsPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button onClick={handleSave} disabled={!form.name || !form.role || createMut.isPending || updateMut.isPending}
-              className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white">
+              >
               {createMut.isPending || updateMut.isPending ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>

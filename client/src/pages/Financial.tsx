@@ -165,10 +165,13 @@ export default function FinancialPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Financeiro</h1>
-          <p className="text-muted-foreground text-sm mt-1">Controle financeiro completo com previsibilidade de receita</p>
+          <div className="mb-2 inline-flex rounded-md border bg-white px-2.5 py-1 text-xs font-medium text-muted-foreground shadow-sm">
+            Receita, caixa e planejamento
+          </div>
+          <h1 className="text-2xl font-semibold">Financeiro</h1>
+          <p className="text-muted-foreground text-sm mt-1">Controle completo com previsibilidade, despesas e cenários.</p>
         </div>
         <Button
           variant="outline"
@@ -210,10 +213,10 @@ export default function FinancialPage() {
 
       {/* Billing KPIs - Previsto / Real / Pendente */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="shadow-sm border-blue-100 bg-gradient-to-br from-blue-50/50 to-white">
+        <Card className="border-blue-100 bg-blue-50/35">
           <CardContent className="p-5 flex items-center gap-4">
-            <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center shadow-sm">
-              <Target className="h-5 w-5 text-white" />
+            <div className="h-12 w-12 rounded-md border border-blue-100 bg-white flex items-center justify-center shadow-sm">
+              <Target className="h-5 w-5 text-blue-700" />
             </div>
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Faturamento Previsto</p>
@@ -225,10 +228,10 @@ export default function FinancialPage() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-sm border-emerald-100 bg-gradient-to-br from-emerald-50/50 to-white">
+        <Card className="border-emerald-100 bg-emerald-50/35">
           <CardContent className="p-5 flex items-center gap-4">
-            <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-emerald-500 to-green-500 flex items-center justify-center shadow-sm">
-              <Wallet className="h-5 w-5 text-white" />
+            <div className="h-12 w-12 rounded-md border border-emerald-100 bg-white flex items-center justify-center shadow-sm">
+              <Wallet className="h-5 w-5 text-emerald-700" />
             </div>
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Faturamento Real</p>
@@ -240,10 +243,10 @@ export default function FinancialPage() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-sm border-amber-100 bg-gradient-to-br from-amber-50/50 to-white">
+        <Card className="border-amber-100 bg-amber-50/35">
           <CardContent className="p-5 flex items-center gap-4">
-            <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shadow-sm">
-              <CreditCard className="h-5 w-5 text-white" />
+            <div className="h-12 w-12 rounded-md border border-amber-100 bg-white flex items-center justify-center shadow-sm">
+              <CreditCard className="h-5 w-5 text-amber-700" />
             </div>
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total Pendente</p>
@@ -268,7 +271,7 @@ export default function FinancialPage() {
             </div>
             <div className="h-3 bg-muted rounded-full overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-emerald-500 to-green-400 rounded-full transition-all duration-500"
+                className="h-full bg-emerald-500 rounded-full transition-all duration-500"
                 style={{ width: `${Math.min((forecast.received / forecast.predicted) * 100, 100)}%` }}
               />
             </div>
@@ -424,7 +427,7 @@ export default function FinancialPage() {
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-sm">Registro de Despesas</CardTitle>
               <Button size="sm" onClick={() => { setExpForm({ amount: "", category: "", description: "", date: "", collaboratorId: "" }); setExpOpen(true); }}
-                className="bg-gradient-to-r from-orange-500 to-amber-500 text-white text-xs">
+                className="text-xs">
                 <Plus className="h-3.5 w-3.5 mr-1" /> Nova Despesa
               </Button>
             </CardHeader>
@@ -586,7 +589,7 @@ export default function FinancialPage() {
                 collaboratorId: expForm.collaboratorId ? parseInt(expForm.collaboratorId) : undefined,
               });
             }} disabled={!expForm.amount || !expForm.category || !expForm.date || createExp.isPending}
-              className="bg-gradient-to-r from-orange-500 to-amber-500 text-white">
+              >
               {createExp.isPending ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>

@@ -163,17 +163,20 @@ export default function ClientsPage() {
     <div className="space-y-6">
       <input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="hidden" onChange={onLogoFileChange} />
 
-      <div className="flex items-center justify-between flex-wrap gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Clientes</h1>
-          <p className="text-muted-foreground text-sm mt-1">Gerencie todos os clientes da agência</p>
+          <div className="mb-2 inline-flex rounded-md border bg-white px-2.5 py-1 text-xs font-medium text-muted-foreground shadow-sm">
+            Relacionamento e contratos
+          </div>
+          <h1 className="text-2xl font-semibold">Clientes</h1>
+          <p className="text-muted-foreground text-sm mt-1">Carteira, contratos e serviços ativos da agência.</p>
         </div>
-        <Button onClick={openNew} className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white shadow-sm">
+        <Button onClick={openNew}>
           <Plus className="h-4 w-4 mr-2" /> Adicionar Cliente
         </Button>
       </div>
 
-      <div className="relative max-w-sm">
+      <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input placeholder="Buscar clientes..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
       </div>
@@ -195,18 +198,18 @@ export default function ClientsPage() {
           {filtered.map(c => {
             const st = statusLabels[c.status] || statusLabels.active;
             return (
-              <Card key={c.id} className="shadow-sm hover:shadow-md transition-all cursor-pointer group" onClick={() => setLocation(`/clientes/${c.id}`)}>
+              <Card key={c.id} className="cursor-pointer group" onClick={() => setLocation(`/clientes/${c.id}`)}>
                 <CardContent className="p-5">
                   <div className="flex items-start gap-3 mb-3">
                     <div className="relative">
                       <Avatar className="h-11 w-11 border-2 border-background shadow-sm">
                         {c.logoUrl && <AvatarImage src={c.logoUrl} alt={c.companyName} />}
-                        <AvatarFallback className="bg-gradient-to-br from-orange-100 to-amber-50 text-orange-700 text-xs font-bold">
+                        <AvatarFallback className="bg-cyan-50 text-cyan-700 text-xs font-bold">
                           {getInitials(c.companyName)}
                         </AvatarFallback>
                       </Avatar>
                       <button
-                        className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-primary text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                        className="absolute -bottom-1 -right-1 h-5 w-5 rounded-md bg-primary text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
                         onClick={e => { e.stopPropagation(); handleLogoUpload(c.id); }}
                         title="Alterar logo"
                       >
@@ -328,7 +331,7 @@ export default function ClientsPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button onClick={handleSave} disabled={!form.companyName || !form.contactName || createMutation.isPending || updateMutation.isPending}
-              className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white">
+              >
               {createMutation.isPending || updateMutation.isPending ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>

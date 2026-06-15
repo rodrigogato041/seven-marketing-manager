@@ -115,7 +115,7 @@ export default function InvestmentsTab() {
       </div>
 
       {/* Add Button */}
-      <Button onClick={() => setIsOpen(true)} className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white">
+      <Button onClick={() => setIsOpen(true)} className="w-full">
         <Plus className="w-4 h-4 mr-2" />
         Novo Investimento
       </Button>

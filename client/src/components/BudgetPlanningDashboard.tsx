@@ -288,8 +288,8 @@ export default function BudgetPlanningDashboard({ year, month, financialValue = 
         {/* Result Forecast */}
         <Card className={`${statusColor} border-2`}>
           <CardContent className="p-6 flex items-center gap-4">
-            <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center">
-              <StatusIcon className="h-6 w-6 text-white" />
+            <div className="h-12 w-12 rounded-md border border-blue-100 bg-white flex items-center justify-center shadow-sm">
+              <StatusIcon className="h-6 w-6 text-blue-700" />
             </div>
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase">Resultado Previsto</p>
@@ -304,10 +304,10 @@ export default function BudgetPlanningDashboard({ year, month, financialValue = 
         </Card>
 
         {/* Safety Margin */}
-        <Card className="bg-gradient-to-br from-green-50 to-white border-green-200">
+        <Card className="bg-emerald-50/35 border-emerald-200">
           <CardContent className="p-6 flex items-center gap-4">
-            <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
-              <Target className="h-6 w-6 text-white" />
+            <div className="h-12 w-12 rounded-md border border-emerald-100 bg-white flex items-center justify-center shadow-sm">
+              <Target className="h-6 w-6 text-emerald-700" />
             </div>
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase">Meta de Segurança</p>

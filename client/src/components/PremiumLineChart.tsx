@@ -38,7 +38,7 @@ function PremiumTooltip({
 }: any) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white/95 backdrop-blur-sm border border-border/60 rounded-xl shadow-2xl p-4 text-sm min-w-[180px]">
+    <div className="bg-white/95 backdrop-blur-sm border border-border/60 rounded-lg shadow-lg p-4 text-sm min-w-[180px]">
       <p className="font-bold text-foreground mb-2 text-[13px] border-b border-border/30 pb-2">
         {xFormatter ? xFormatter(label) : label}
       </p>

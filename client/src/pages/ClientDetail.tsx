@@ -131,7 +131,7 @@ function ProductionTab({ clientId, client }: { clientId: number; client: any }) 
         <Button
           onClick={handleSave}
           disabled={updateProduction.isPending}
-          className="w-full bg-gradient-to-r from-orange-500 to-amber-500 text-white"
+          className="w-full"
         >
           {updateProduction.isPending ? "Salvando..." : "Salvar Produção"}
         </Button>
@@ -231,7 +231,10 @@ export default function ClientDetailPage() {
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">{client.companyName}</h1>
+          <div className="mb-2 inline-flex rounded-md border bg-white px-2.5 py-1 text-xs font-medium text-muted-foreground shadow-sm">
+            Cliente
+          </div>
+          <h1 className="text-2xl font-semibold">{client.companyName}</h1>
           <p className="text-muted-foreground text-sm mt-1">{client.contactName}</p>
         </div>
         <Badge variant={client.status === "active" ? "default" : client.status === "paused" ? "secondary" : "destructive"}>
@@ -291,7 +294,7 @@ export default function ClientDetailPage() {
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-sm">Histórico de Pagamentos</CardTitle>
               <Button size="sm" onClick={() => { setPayForm({ amount: "", dueDate: "", status: "pending", description: "" }); setPayOpen(true); }}
-                className="bg-gradient-to-r from-orange-500 to-amber-500 text-white text-xs">
+                className="text-xs">
                 <Plus className="h-3.5 w-3.5 mr-1" /> Novo Pagamento
               </Button>
             </CardHeader>
@@ -371,7 +374,7 @@ export default function ClientDetailPage() {
                   </SelectContent>
                 </Select>
                 <Button size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadDoc.isPending}
-                  className="bg-gradient-to-r from-orange-500 to-amber-500 text-white text-xs">
+                  className="text-xs">
                   <Plus className="h-3.5 w-3.5 mr-1" /> {uploadDoc.isPending ? "Enviando..." : "Upload"}
                 </Button>
                 <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileUpload} />
@@ -446,7 +449,7 @@ export default function ClientDetailPage() {
                 description: payForm.description || undefined,
               });
             }} disabled={!payForm.amount || !payForm.dueDate || createPayment.isPending}
-              className="bg-gradient-to-r from-orange-500 to-amber-500 text-white">
+              >
               {createPayment.isPending ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>

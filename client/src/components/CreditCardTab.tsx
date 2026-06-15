@@ -19,6 +19,21 @@ function formatCurrency(value: string | number | null) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(num);
 }
 
+function parseDateInput(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return Date.UTC(year, month - 1, day);
+}
+
+function formatDateUTC(value: number) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(value));
+}
+
 export default function CreditCardTab() {
   const [isOpen, setIsOpen] = useState(false);
   const [form, setForm] = useState({ description: "", amount: "", category: "", transactionDate: "", status: "pending" as "pending" | "paid" });
@@ -62,11 +77,16 @@ export default function CreditCardTab() {
       toast.error("Preencha todos os campos obrigatórios");
       return;
     }
+    const transactionDate = parseDateInput(form.transactionDate);
+    if (!transactionDate) {
+      toast.error("Informe uma data válida");
+      return;
+    }
     createMut.mutate({
       description: form.description,
       amount: form.amount,
       category: form.category,
-      transactionDate: parseInt(form.transactionDate),
+      transactionDate,
       status: form.status,
     });
   };
@@ -106,7 +126,7 @@ export default function CreditCardTab() {
       </div>
 
       {/* Add Button */}
-      <Button onClick={() => setIsOpen(true)} className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white">
+      <Button onClick={() => setIsOpen(true)} className="w-full">
         <Plus className="w-4 h-4 mr-2" />
         Nova Transação no Cartão
       </Button>
@@ -116,21 +136,18 @@ export default function CreditCardTab() {
         <Button
           variant={filterStatus === "all" ? "default" : "outline"}
           onClick={() => setFilterStatus("all")}
-          className={filterStatus === "all" ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white" : ""}
         >
           Todas
         </Button>
         <Button
           variant={filterStatus === "pending" ? "default" : "outline"}
           onClick={() => setFilterStatus("pending")}
-          className={filterStatus === "pending" ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white" : ""}
         >
           Pendentes
         </Button>
         <Button
           variant={filterStatus === "paid" ? "default" : "outline"}
           onClick={() => setFilterStatus("paid")}
-          className={filterStatus === "paid" ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white" : ""}
         >
           Pagos
         </Button>
@@ -163,7 +180,7 @@ export default function CreditCardTab() {
                       <td className="py-3 px-4 font-medium">{trans.description}</td>
                       <td className="py-3 px-4 text-muted-foreground">{trans.category}</td>
                       <td className="py-3 px-4 text-right font-semibold">{formatCurrency(trans.amount)}</td>
-                      <td className="py-3 px-4">{new Date(trans.transactionDate).toLocaleDateString("pt-BR")}</td>
+                      <td className="py-3 px-4">{formatDateUTC(trans.transactionDate)}</td>
                       <td className="py-3 px-4">
                         <Badge className={trans.status === "pending" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}>
                           {trans.status === "pending" ? "Pendente" : "Pago"}

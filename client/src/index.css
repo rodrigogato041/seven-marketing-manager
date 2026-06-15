@@ -44,60 +44,69 @@
 }
 
 :root {
-  /* Premium Orange palette */
-  --primary: oklch(0.65 0.19 45);
+  --primary: oklch(0.55 0.13 188);
   --primary-foreground: oklch(1 0 0);
-  --radius: 0.625rem;
+  --radius: 0.5rem;
+  --app-surface: oklch(0.97 0.006 248);
 
-  --background: oklch(0.985 0.002 75);
-  --foreground: oklch(0.18 0.01 60);
+  --background: oklch(0.985 0.003 248);
+  --foreground: oklch(0.18 0.015 250);
 
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.01 60);
+  --card-foreground: oklch(0.18 0.015 250);
 
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.01 60);
+  --popover-foreground: oklch(0.18 0.015 250);
 
-  --secondary: oklch(0.96 0.008 75);
-  --secondary-foreground: oklch(0.35 0.015 60);
+  --secondary: oklch(0.95 0.006 248);
+  --secondary-foreground: oklch(0.28 0.025 248);
 
-  --muted: oklch(0.955 0.005 75);
-  --muted-foreground: oklch(0.5 0.015 60);
+  --muted: oklch(0.955 0.005 248);
+  --muted-foreground: oklch(0.48 0.018 248);
 
-  --accent: oklch(0.94 0.025 55);
-  --accent-foreground: oklch(0.3 0.04 50);
+  --accent: oklch(0.945 0.02 188);
+  --accent-foreground: oklch(0.29 0.055 188);
 
   --destructive: oklch(0.58 0.22 25);
   --destructive-foreground: oklch(0.99 0 0);
 
-  --border: oklch(0.915 0.008 75);
-  --input: oklch(0.915 0.008 75);
-  --ring: oklch(0.65 0.19 45);
+  --border: oklch(0.90 0.008 248);
+  --input: oklch(0.90 0.008 248);
+  --ring: oklch(0.55 0.13 188);
 
-  /* Charts - warm gradient */
-  --chart-1: oklch(0.72 0.17 50);
-  --chart-2: oklch(0.65 0.19 45);
-  --chart-3: oklch(0.55 0.16 40);
-  --chart-4: oklch(0.78 0.12 60);
-  --chart-5: oklch(0.48 0.13 35);
+  --chart-1: oklch(0.58 0.15 188);
+  --chart-2: oklch(0.64 0.16 146);
+  --chart-3: oklch(0.68 0.16 72);
+  --chart-4: oklch(0.58 0.16 252);
+  --chart-5: oklch(0.62 0.18 25);
 
-  /* Sidebar - dark elegant */
-  --sidebar: oklch(0.17 0.015 55);
-  --sidebar-foreground: oklch(0.88 0.01 60);
-  --sidebar-primary: oklch(0.72 0.17 50);
+  --sidebar: oklch(0.966 0.006 248);
+  --sidebar-foreground: oklch(0.24 0.02 248);
+  --sidebar-primary: oklch(0.55 0.13 188);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.24 0.02 55);
-  --sidebar-accent-foreground: oklch(0.95 0.005 60);
-  --sidebar-border: oklch(0.28 0.015 55);
-  --sidebar-ring: oklch(0.65 0.19 45);
+  --sidebar-accent: oklch(0.985 0.004 248);
+  --sidebar-accent-foreground: oklch(0.24 0.02 248);
+  --sidebar-border: oklch(0.89 0.008 248);
+  --sidebar-ring: oklch(0.55 0.13 188);
 }
 
 @layer base {
+  html,
+  body,
+  #root {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   * {
     @apply border-border outline-ring/50;
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
+    min-height: 100vh;
+    background:
+      linear-gradient(180deg, oklch(0.985 0.003 248) 0%, var(--app-surface) 100%);
   }
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]),
@@ -113,6 +122,70 @@
 }
 
 @layer components {
+  [data-slot="card"] {
+    min-width: 0;
+    max-width: 100%;
+    border-color: color-mix(in oklab, var(--border) 86%, transparent);
+    box-shadow:
+      0 1px 2px rgba(15, 23, 42, 0.04),
+      0 12px 28px rgba(15, 23, 42, 0.04);
+  }
+
+  [data-slot="card-content"],
+  [data-slot="card-header"],
+  [data-slot="card-footer"] {
+    min-width: 0;
+  }
+
+  [data-slot="card"]:hover {
+    box-shadow:
+      0 1px 2px rgba(15, 23, 42, 0.05),
+      0 16px 36px rgba(15, 23, 42, 0.065);
+  }
+
+  [data-slot="button"][class*="from-orange-500"],
+  [data-slot="button"][class*="from-amber-500"],
+  [data-slot="button"][class*="from-emerald-500"] {
+    background: var(--primary) !important;
+    color: var(--primary-foreground) !important;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08), 0 8px 18px rgba(12, 128, 136, 0.16) !important;
+  }
+
+  [data-slot="button"][class*="from-orange-500"]:hover,
+  [data-slot="button"][class*="from-amber-500"]:hover,
+  [data-slot="button"][class*="from-emerald-500"]:hover {
+    background: color-mix(in oklab, var(--primary) 90%, black) !important;
+  }
+
+  [data-slot="tabs-list"] {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  table {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  th {
+    color: var(--muted-foreground);
+    font-size: 0.72rem;
+    font-weight: 650;
+    text-transform: uppercase;
+    letter-spacing: 0;
+  }
+
+  td {
+    color: var(--foreground);
+  }
+
+  .tracking-tight,
+  .tracking-wide,
+  .tracking-wider,
+  .tracking-widest {
+    letter-spacing: 0 !important;
+  }
+
   .container {
     width: 100%;
     margin-left: auto;
@@ -124,6 +197,11 @@
   .flex {
     min-height: 0;
     min-width: 0;
+  }
+
+  [data-slot="sidebar-inset"] {
+    min-width: 0;
+    overflow-x: hidden;
   }
 
   @media (min-width: 640px) {

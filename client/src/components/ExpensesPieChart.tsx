@@ -139,7 +139,7 @@ export default function ExpensesPieChart({ expenses, height = 400 }: ExpensesPie
           size="sm"
           variant={viewMode === "detailed" ? "default" : "outline"}
           onClick={() => setViewMode("detailed")}
-          className={viewMode === "detailed" ? "bg-gradient-to-r from-orange-500 to-amber-500 text-white" : ""}
+          className={viewMode === "detailed" ? "" : ""}
         >
           Visualização Detalhada
         </Button>
@@ -147,14 +147,14 @@ export default function ExpensesPieChart({ expenses, height = 400 }: ExpensesPie
           size="sm"
           variant={viewMode === "category" ? "default" : "outline"}
           onClick={() => setViewMode("category")}
-          className={viewMode === "category" ? "bg-gradient-to-r from-orange-500 to-amber-500 text-white" : ""}
+          className={viewMode === "category" ? "" : ""}
         >
           Por Categoria
         </Button>
       </div>
 
       {/* Gráfico de Pizza */}
-      <div className="bg-gradient-to-br from-white to-gray-50 rounded-lg p-6 shadow-sm border border-gray-100">
+      <div className="rounded-lg border border-gray-100 bg-white p-6 shadow-sm">
         <ResponsiveContainer width="100%" height={height}>
           <PieChart>
             <Pie
@@ -181,7 +181,7 @@ export default function ExpensesPieChart({ expenses, height = 400 }: ExpensesPie
 
       {/* Tabela de Detalhes */}
       <div className="bg-white rounded-lg border border-gray-100 overflow-hidden shadow-sm">
-        <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-orange-50 to-amber-50">
+        <div className="p-4 border-b border-gray-100 bg-muted/40">
           <h3 className="font-semibold text-sm text-foreground">
             {viewMode === "detailed" ? "Resumo Detalhado de Despesas" : "Resumo por Categoria"}
           </h3>
@@ -210,7 +210,7 @@ export default function ExpensesPieChart({ expenses, height = 400 }: ExpensesPie
               </div>
             );
           })}
-          <div className="p-4 bg-gradient-to-r from-orange-50 to-amber-50 flex items-center justify-between font-semibold">
+          <div className="p-4 bg-muted/40 flex items-center justify-between font-semibold">
             <p className="text-sm text-foreground">Total de Despesas</p>
             <p className="text-lg text-orange-600">
               R$ {total.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

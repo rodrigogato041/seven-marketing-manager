@@ -168,13 +168,16 @@ export default function Home() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
-          <p className="text-muted-foreground text-sm mt-1">Visão geral da Seven Marketing</p>
+    <div className="min-w-0 space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="mb-2 inline-flex rounded-md border bg-white px-2.5 py-1 text-xs font-medium text-muted-foreground shadow-sm">
+            Operação em tempo real
+          </div>
+          <h1 className="text-2xl font-semibold text-foreground">Dashboard</h1>
+          <p className="mt-1 max-w-[19rem] text-sm text-muted-foreground sm:max-w-2xl">Visão executiva da Seven Marketing com receita, entregas e alertas.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
           <Button
             variant="outline"
             size="icon"
@@ -206,20 +209,20 @@ export default function Home() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPICard title="Clientes Ativos" value={loadingStats ? "..." : String(stats?.activeClients ?? 0)} icon={Users} accent="from-orange-500 to-amber-500" />
-        <KPICard title="Tarefas Pendentes" value={loadingStats ? "..." : String(stats?.pendingTasks ?? 0)} icon={ListTodo} accent="from-blue-500 to-indigo-500" />
-        <KPICard title="Receita Total" value={loadingStats ? "..." : financialValue(formatCurrency(stats?.totalRevenue ?? 0))} icon={DollarSign} accent="from-emerald-500 to-green-500" />
-        <KPICard title="Lucro Líquido" value={loadingStats ? "..." : financialValue(formatCurrency(profit))} icon={TrendingUp} accent="from-violet-500 to-purple-500" />
+      <div className="grid w-full min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KPICard title="Clientes Ativos" value={loadingStats ? "..." : String(stats?.activeClients ?? 0)} icon={Users} accent="bg-cyan-50 text-cyan-700 border-cyan-100" />
+        <KPICard title="Tarefas Pendentes" value={loadingStats ? "..." : String(stats?.pendingTasks ?? 0)} icon={ListTodo} accent="bg-blue-50 text-blue-700 border-blue-100" />
+        <KPICard title="Receita Total" value={loadingStats ? "..." : financialValue(formatCurrency(stats?.totalRevenue ?? 0))} icon={DollarSign} accent="bg-emerald-50 text-emerald-700 border-emerald-100" />
+        <KPICard title="Lucro Líquido" value={loadingStats ? "..." : financialValue(formatCurrency(profit))} icon={TrendingUp} accent="bg-violet-50 text-violet-700 border-violet-100" />
       </div>
 
       {/* Billing Forecast */}
       {forecast && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Card className="shadow-sm border-blue-100 bg-gradient-to-br from-blue-50/40 to-white">
+        <div className="grid w-full min-w-0 grid-cols-1 gap-4 sm:grid-cols-3">
+          <Card className="border-blue-100 bg-blue-50/35">
             <CardContent className="p-4 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center shadow-sm">
-                <Target className="h-4.5 w-4.5 text-white" />
+              <div className="h-10 w-10 rounded-md border border-blue-100 bg-white flex items-center justify-center shadow-sm">
+                <Target className="h-4.5 w-4.5 text-blue-700" />
               </div>
               <div>
                 <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Previsto do Mês</p>
@@ -227,10 +230,10 @@ export default function Home() {
               </div>
             </CardContent>
           </Card>
-          <Card className="shadow-sm border-emerald-100 bg-gradient-to-br from-emerald-50/40 to-white">
+          <Card className="border-emerald-100 bg-emerald-50/35">
             <CardContent className="p-4 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-emerald-500 to-green-500 flex items-center justify-center shadow-sm">
-                <Wallet className="h-4.5 w-4.5 text-white" />
+              <div className="h-10 w-10 rounded-md border border-emerald-100 bg-white flex items-center justify-center shadow-sm">
+                <Wallet className="h-4.5 w-4.5 text-emerald-700" />
               </div>
               <div>
                 <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Recebido do Mês</p>
@@ -238,10 +241,10 @@ export default function Home() {
               </div>
             </CardContent>
           </Card>
-          <Card className="shadow-sm border-amber-100 bg-gradient-to-br from-amber-50/40 to-white">
+          <Card className="border-amber-100 bg-amber-50/35">
             <CardContent className="p-4 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shadow-sm">
-                <CreditCard className="h-4.5 w-4.5 text-white" />
+              <div className="h-10 w-10 rounded-md border border-amber-100 bg-white flex items-center justify-center shadow-sm">
+                <CreditCard className="h-4.5 w-4.5 text-amber-700" />
               </div>
               <div>
                 <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Pendente do Mês</p>
@@ -264,7 +267,7 @@ export default function Home() {
             </div>
             <div className="h-2.5 bg-muted rounded-full overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-emerald-500 to-green-400 rounded-full transition-all duration-500"
+                className="h-full bg-emerald-500 rounded-full transition-all duration-500"
                 style={{ width: `${Math.min((forecast.received / forecast.predicted) * 100, 100)}%` }}
               />
             </div>
@@ -352,7 +355,7 @@ export default function Home() {
 
       {/* Weekly Summary */}
       {weekly && (
-        <Card className="shadow-sm border-primary/10 bg-gradient-to-r from-primary/5 via-transparent to-transparent">
+        <Card className="border-primary/15 bg-primary/5">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <CalendarCheck className="h-4 w-4 text-primary" />
@@ -458,15 +461,15 @@ export default function Home() {
 
 function KPICard({ title, value, icon: Icon, accent }: { title: string; value: string; icon: any; accent: string }) {
   return (
-    <Card className="shadow-sm hover:shadow-md transition-shadow">
-      <CardContent className="p-5">
+    <Card className="group w-full overflow-hidden">
+      <CardContent className="p-4 sm:p-5">
         <div className="flex items-center justify-between">
-          <div>
+          <div className="min-w-0">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{title}</p>
-            <p className="text-2xl font-bold mt-1 text-foreground">{value}</p>
+            <p className="mt-1 break-words text-2xl font-bold text-foreground">{value}</p>
           </div>
-          <div className={`h-11 w-11 rounded-xl bg-gradient-to-br ${accent} flex items-center justify-center shadow-sm`}>
-            <Icon className="h-5 w-5 text-white" />
+          <div className={`hidden h-11 w-11 shrink-0 rounded-md border ${accent} items-center justify-center transition-transform group-hover:-translate-y-0.5 sm:flex`}>
+            <Icon className="h-5 w-5" />
           </div>
         </div>
       </CardContent>
