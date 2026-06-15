@@ -23,12 +23,19 @@ import InvestmentsTab from "@/components/InvestmentsTab";
 import CreditCardTab from "@/components/CreditCardTab";
 import { MonthlyPeriodSelector } from "@/components/MonthlyPeriodSelector";
 import BudgetPlanningDashboard from "@/components/BudgetPlanningDashboard";
+import { StrategicFinanceDashboard } from "@/components/StrategicFinanceDashboard";
 import { toast } from "sonner";
 import { useFinancialPrivacy } from "@/lib/financialPrivacy";
 
 function formatCurrency(value: string | number | null) {
   const num = typeof value === "string" ? parseFloat(value) : (value ?? 0);
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(num);
+}
+
+function parseLocalDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return Date.now();
+  return new Date(year, month - 1, day, 12, 0, 0, 0).getTime();
 }
 
 const statusConfig = {
@@ -42,7 +49,7 @@ export default function FinancialPage() {
   const now = new Date();
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
-  const [activeTab, setActiveTab] = useState("detailed");
+  const [activeTab, setActiveTab] = useState("strategic");
 
   // Billing forecast query
   const { data: forecast, isLoading: loadingForecast } = trpc.payments.billingForecast.useQuery(
@@ -61,6 +68,7 @@ export default function FinancialPage() {
   const refreshPlanningMetrics = () => {
     utils.budgetPlanning.getMetrics.invalidate();
     utils.budgetAlerts.checkBudgetAlerts.invalidate({ year: selectedYear, month: selectedMonth });
+    utils.strategicFinance.summary.invalidate({ year: selectedYear, month: selectedMonth });
   };
 
   // Mutations
@@ -285,6 +293,7 @@ export default function FinancialPage() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
+          <TabsTrigger value="strategic">Estratégico</TabsTrigger>
           <TabsTrigger value="planning">Planejamento Financeiro</TabsTrigger>
           <TabsTrigger value="detailed">Financeiro Detalhado</TabsTrigger>
           <TabsTrigger value="expenses">Despesas</TabsTrigger>
@@ -293,6 +302,11 @@ export default function FinancialPage() {
           <TabsTrigger value="creditCard">Cartão de Crédito</TabsTrigger>
           <TabsTrigger value="charts">Gráficos</TabsTrigger>
         </TabsList>
+
+        {/* FINANCEIRO ESTRATÉGICO */}
+        <TabsContent value="strategic">
+          <StrategicFinanceDashboard year={selectedYear} month={selectedMonth} financialValue={financialValue} />
+        </TabsContent>
 
         {/* PLANEJAMENTO FINANCEIRO */}
         <TabsContent value="planning">
@@ -585,7 +599,7 @@ export default function FinancialPage() {
                 amount: expForm.amount,
                 category: expForm.category,
                 description: expForm.description || undefined,
-                date: new Date(expForm.date).getTime(),
+                date: parseLocalDate(expForm.date),
                 collaboratorId: expForm.collaboratorId ? parseInt(expForm.collaboratorId) : undefined,
               });
             }} disabled={!expForm.amount || !expForm.category || !expForm.date || createExp.isPending}

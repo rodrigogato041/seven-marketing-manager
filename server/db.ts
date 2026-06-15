@@ -935,6 +935,256 @@ export async function calculateMonthlyFinancialSummary(periodId: number) {
   });
 }
 
+function getMonthRange(year: number, month: number) {
+  return {
+    start: new Date(year, month - 1, 1).getTime(),
+    end: new Date(year, month, 0, 23, 59, 59, 999).getTime(),
+  };
+}
+
+function isInRange(value: unknown, start: number, end: number) {
+  const timestamp = asNumber(value);
+  return timestamp >= start && timestamp <= end;
+}
+
+function expenseGroupByType(expenses: LocalRecord[]) {
+  return expenses.reduce((acc, expense) => {
+    const type = classifyActualExpense(expense);
+    acc[type] = (acc[type] ?? 0) + money(expense.amount);
+    return acc;
+  }, { fixed: 0, variable: 0, personal: 0 } as Record<"fixed" | "variable" | "personal", number>);
+}
+
+function categoryTotal(expenses: LocalRecord[], words: string[]) {
+  return expenses
+    .filter(expense => {
+      const text = normalizeBudgetText(`${expense.category} ${expense.description}`);
+      return words.some(word => text.includes(word));
+    })
+    .reduce((sum, expense) => sum + money(expense.amount), 0);
+}
+
+function paymentMessage(companyName: string, amount: number) {
+  const formatted = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(amount);
+  return `Olá, tudo bem? Passando para lembrar que há um pagamento em aberto da ${companyName} no valor de ${formatted}, referente aos serviços da Seven Marketing. Qualquer dúvida, estou à disposição.`;
+}
+
+function buildCashWindow(days: number, now: number, payments: LocalRecord[], expenses: LocalRecord[], creditCards: LocalRecord[], collaborators: LocalRecord[]) {
+  const { start } = getDayRange(new Date(now));
+  const end = start + days * 24 * 60 * 60 * 1000 - 1;
+  const receivables = payments
+    .filter(payment => payment.status !== "paid" && asNumber(payment.dueDate) <= end)
+    .reduce((sum, payment) => sum + money(payment.amount), 0);
+  const datedExpenses = expenses
+    .filter(expense => isInRange(expense.date, start, end))
+    .reduce((sum, expense) => sum + money(expense.amount), 0);
+  const cardPending = creditCards
+    .filter(card => card.status === "pending" && asNumber(card.transactionDate) <= end)
+    .reduce((sum, card) => sum + money(card.amount), 0);
+  const collaboratorPayables = collaborators
+    .filter(collaborator => collaborator.status !== "inactive" && asNumber(collaborator.monthlyCost) > 0)
+    .filter(collaborator => {
+      const paymentDay = asNumber(collaborator.paymentDay);
+      if (!paymentDay) return days >= 30;
+      const date = new Date(now);
+      const due = new Date(date.getFullYear(), date.getMonth(), Math.min(paymentDay, 28), 12, 0, 0, 0).getTime();
+      return due >= start && due <= end;
+    })
+    .reduce((sum, collaborator) => sum + money(collaborator.monthlyCost), 0);
+  const payables = datedExpenses + cardPending + collaboratorPayables;
+  return {
+    days,
+    label: `Próximos ${days} dias`,
+    totalReceivable: roundMoney(receivables),
+    totalPayable: roundMoney(payables),
+    projectedBalance: roundMoney(receivables - payables),
+    risk: receivables - payables < 0 ? "negative" : receivables - payables < payables * 0.15 ? "attention" : "healthy",
+  };
+}
+
+export async function getStrategicFinance(year: number, month: number) {
+  const { start, end } = getMonthRange(year, month);
+  const now = nowMs();
+  const [clients, payments, expenses, investments, creditCards, collaborators] = await Promise.all([
+    listClients(),
+    listPayments(),
+    listExpenses(),
+    listInvestments(),
+    listCreditCardTransactions(),
+    listCollaborators(),
+  ]);
+
+  const monthExpenses = expenses.filter(expense => isInRange(expense.date, start, end));
+  const monthInvestments = investments.filter(investment => isInRange(investment.date, start, end));
+  const monthCreditCards = creditCards.filter(card => isInRange(card.transactionDate, start, end));
+  const forecast = await getMonthlyBillingForecast(year, month);
+  const period = await getOrCreateMonthlyPeriod(year, month);
+  const budget = await getOrCreateMonthlyBudget(period.id);
+  const collaboratorCosts = collaborators
+    .filter(collaborator => collaborator.status !== "inactive")
+    .reduce((sum, collaborator) => sum + money(collaborator.monthlyCost), 0);
+  const budgetMetrics = await calculateBudgetMetrics(budget.id, collaboratorCosts);
+  const expenseGroups = expenseGroupByType(monthExpenses);
+
+  const grossRevenue = roundMoney(forecast.predicted);
+  const receivedRevenue = roundMoney(forecast.received);
+  const pendingRevenue = roundMoney(forecast.pending);
+  const fixedCosts = roundMoney(Math.max(money(budgetMetrics.totalFixedCosts), expenseGroups.fixed));
+  const variableCosts = roundMoney(Math.max(money(budgetMetrics.totalVariableCosts), expenseGroups.variable));
+  const personalExpenses = roundMoney(Math.max(money(budgetMetrics.totalPersonalExpenses), expenseGroups.personal));
+  const collaboratorCostTotal = roundMoney(money(budgetMetrics.totalCollaboratorCosts));
+  const softwareTools = roundMoney(categoryTotal(monthExpenses, ["software", "assinatura", "canva", "adobe", "sistema", "ferramenta"]));
+  const operationalExpenses = roundMoney(monthExpenses.reduce((sum, expense) => sum + money(expense.amount), 0));
+  const investmentsTotal = roundMoney(monthInvestments.reduce((sum, investment) => sum + money(investment.amount), 0));
+  const creditCardPending = roundMoney(monthCreditCards.filter(card => card.status === "pending").reduce((sum, card) => sum + money(card.amount), 0));
+  const taxes = 0;
+  const companyExpenses = roundMoney(fixedCosts + variableCosts + collaboratorCostTotal + taxes);
+  const operatingProfit = roundMoney(receivedRevenue - companyExpenses);
+  const netProfit = roundMoney(operatingProfit - personalExpenses - investmentsTotal - creditCardPending);
+  const margin = receivedRevenue > 0 ? roundMoney((netProfit / receivedRevenue) * 100) : 0;
+  const availableCash = roundMoney(receivedRevenue - operationalExpenses - investmentsTotal - creditCardPending);
+
+  const clientRevenue = clients
+    .filter(client => client.status === "active")
+    .map(client => ({ id: client.id, companyName: client.companyName, amount: money(client.monthlyValue) }))
+    .sort((a, b) => b.amount - a.amount);
+  const topClientShare = grossRevenue > 0 && clientRevenue[0] ? roundMoney((clientRevenue[0].amount / grossRevenue) * 100) : 0;
+  const topTwoShare = grossRevenue > 0 ? roundMoney((clientRevenue.slice(0, 2).reduce((sum, item) => sum + item.amount, 0) / grossRevenue) * 100) : 0;
+
+  const pendingPayments = payments.filter(payment => payment.status !== "paid");
+  const overduePayments = pendingPayments.filter(payment => asNumber(payment.dueDate) < now);
+  const pendingAmount = pendingPayments.reduce((sum, payment) => sum + money(payment.amount), 0);
+  const cashflow = [7, 15, 30].map(days => buildCashWindow(days, now, pendingPayments, monthExpenses, creditCards, collaborators));
+
+  const riskAlerts = [
+    grossRevenue > 0 && fixedCosts / grossRevenue > 0.5 ? {
+      level: "high",
+      title: "Custo fixo acima do seguro",
+      description: `Custos fixos representam ${Math.round((fixedCosts / grossRevenue) * 100)}% da receita prevista.`,
+    } : null,
+    receivedRevenue > 0 && margin < 15 ? {
+      level: margin < 0 ? "critical" : "medium",
+      title: "Margem líquida baixa",
+      description: `Margem líquida atual em ${margin}%. Revise custos e cobranças pendentes.`,
+    } : null,
+    topTwoShare >= 60 ? {
+      level: "medium",
+      title: "Receita concentrada",
+      description: `Os dois maiores clientes representam ${topTwoShare}% da receita prevista.`,
+    } : null,
+    grossRevenue > 0 && pendingAmount / grossRevenue > 0.35 ? {
+      level: "high",
+      title: "Pendências elevadas",
+      description: `Pagamentos pendentes somam ${Math.round((pendingAmount / grossRevenue) * 100)}% da receita prevista.`,
+    } : null,
+    grossRevenue > 0 && personalExpenses / grossRevenue > 0.12 ? {
+      level: "medium",
+      title: "Pessoal impactando caixa",
+      description: `Despesas pessoais representam ${Math.round((personalExpenses / grossRevenue) * 100)}% da receita prevista.`,
+    } : null,
+    money(budgetMetrics.totalDuplicatedActualExpenses) > 0 ? {
+      level: "low",
+      title: "Duplicidades detectadas",
+      description: `${budgetMetrics.ignoredDuplicateExpenses?.length ?? 0} lançamento(s) não foram somados duas vezes.`,
+    } : null,
+    cashflow.some(item => item.projectedBalance < 0) ? {
+      level: "critical",
+      title: "Risco de caixa negativo",
+      description: "Uma das janelas projetadas indica mais saídas do que entradas previstas.",
+    } : null,
+    grossRevenue > 0 && creditCardPending / grossRevenue > 0.2 ? {
+      level: "medium",
+      title: "Cartão alto para o mês",
+      description: `Compras pendentes no cartão representam ${Math.round((creditCardPending / grossRevenue) * 100)}% da receita prevista.`,
+    } : null,
+    overduePayments.length > 0 ? {
+      level: "high",
+      title: "Clientes em atraso",
+      description: `${overduePayments.length} pagamento(s) estão vencidos e precisam de cobrança.`,
+    } : null,
+  ].filter(Boolean);
+
+  const clientsById = new Map(clients.map(client => [client.id, client]));
+  const collections = pendingPayments
+    .map(payment => {
+      const client = clientsById.get(payment.clientId);
+      const daysLate = Math.floor((now - asNumber(payment.dueDate)) / (24 * 60 * 60 * 1000));
+      const amount = money(payment.amount);
+      return {
+        paymentId: payment.id,
+        clientId: payment.clientId,
+        companyName: client?.companyName ?? "Cliente sem nome",
+        amount: roundMoney(amount),
+        dueDate: payment.dueDate,
+        daysLate: Math.max(daysLate, 0),
+        status: daysLate > 0 ? "Atrasado" : daysLate === 0 ? "Vence hoje" : "Pendente",
+        collectionStatus: daysLate > 0 ? "Atrasado" : "Pendente",
+        priority: daysLate > 7 || amount >= grossRevenue * 0.2 ? "Alta" : daysLate > 0 ? "Média" : "Normal",
+        message: paymentMessage(client?.companyName ?? "sua empresa", amount),
+      };
+    })
+    .sort((a, b) => {
+      const priorityOrder: Record<string, number> = { Alta: 0, Média: 1, Normal: 2 };
+      return priorityOrder[a.priority] - priorityOrder[b.priority] || asNumber(a.dueDate) - asNumber(b.dueDate);
+    });
+
+  const company = {
+    revenue: receivedRevenue,
+    fixedCosts,
+    variableCosts,
+    collaboratorCosts: collaboratorCostTotal,
+    taxes,
+    tools: softwareTools,
+    operationalExpenses,
+    investments: investmentsTotal,
+    creditCardPending,
+    operatingProfit,
+  };
+  const personal = {
+    withdrawals: personalExpenses,
+    personalExpenses,
+    personalImpactPercentage: grossRevenue > 0 ? roundMoney((personalExpenses / grossRevenue) * 100) : 0,
+  };
+
+  return {
+    period: { year, month, startDate: start, endDate: end },
+    dre: {
+      grossRevenue,
+      receivedRevenue,
+      pendingRevenue,
+      taxes,
+      fixedCosts,
+      variableCosts,
+      collaboratorCosts: collaboratorCostTotal,
+      freelancers: categoryTotal(monthExpenses, ["freelancer", "terceirizacao", "terceiro"]),
+      tools: softwareTools,
+      subscriptions: categoryTotal(monthExpenses, ["assinatura", "software", "sistema"]),
+      operationalExpenses,
+      personalExpenses,
+      investments: investmentsTotal,
+      partnerWithdrawals: personalExpenses,
+      creditCardPending,
+      operatingProfit,
+      netProfit,
+      netMargin: margin,
+      finalBalance: availableCash,
+    },
+    separation: { company, personal },
+    cashflow,
+    riskAlerts,
+    collections,
+    concentration: {
+      topClientShare,
+      topTwoShare,
+      topClients: clientRevenue.slice(0, 5),
+    },
+    duplicates: {
+      totalIgnored: roundMoney(money(budgetMetrics.totalDuplicatedActualExpenses)),
+      items: budgetMetrics.ignoredDuplicateExpenses ?? [],
+    },
+  };
+}
+
 export async function getOrCreateMonthlyBudget(periodId: number): Promise<any> {
   const existing = (await list("monthlyBudgets")).find(item => item.periodId === periodId);
   if (existing) return existing;

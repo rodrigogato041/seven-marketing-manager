@@ -339,6 +339,13 @@ const dashboardRouter = router({
 });
 
 // ─── Content Production Router ───
+const strategicFinanceRouter = router({
+  summary: protectedProcedure.input(z.object({
+    year: z.number(),
+    month: z.number().min(1).max(12),
+  })).query(({ input }) => db.getStrategicFinance(input.year, input.month)),
+});
+
 const contentProductionRouter = router({
   get: protectedProcedure.input(z.object({ clientId: z.number(), month: z.string() }))
     .query(async ({ input }) => {
@@ -464,6 +471,7 @@ export const appRouter = router({
   events: eventRouter,
   notifications: notificationRouter,
   dashboard: dashboardRouter,
+  strategicFinance: strategicFinanceRouter,
   contentProduction: contentProductionRouter,
   investments: investmentRouter,
   creditCard: creditCardRouter,
