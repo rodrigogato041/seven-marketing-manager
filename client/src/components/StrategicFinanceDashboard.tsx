@@ -179,7 +179,7 @@ export function StrategicFinanceDashboard({
               <Row label="Custos variáveis" value={financialValue(formatCurrency(dre.variableCosts))} />
               <Row label="Colaboradores" value={financialValue(formatCurrency(dre.collaboratorCosts))} />
               <Row label="Ferramentas/assinaturas" value={financialValue(formatCurrency(dre.tools + dre.subscriptions))} muted />
-              <Row label="Investimentos" value={financialValue(formatCurrency(dre.investments))} muted />
+              <Row label="Investimentos (informativo)" value={financialValue(formatCurrency(dre.investments))} muted />
               <Row label="Cartão pendente" value={financialValue(formatCurrency(dre.creditCardPending))} muted />
             </div>
             <div className="rounded-lg border bg-muted/30 p-3 md:col-span-2">
@@ -193,7 +193,7 @@ export function StrategicFinanceDashboard({
                   <p className="text-lg font-semibold">{financialValue(formatCurrency(dre.personalExpenses))}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Saldo final</p>
+                  <p className="text-xs text-muted-foreground">Saldo final sem investimentos</p>
                   <p className="text-lg font-semibold">{financialValue(formatCurrency(dre.finalBalance))}</p>
                 </div>
               </div>

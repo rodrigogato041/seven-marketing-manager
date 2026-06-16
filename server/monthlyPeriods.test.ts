@@ -57,13 +57,14 @@ describe("Monthly Periods Logic", () => {
   });
 
   describe("Financial Summary Calculation", () => {
-    it("should calculate net profit correctly", () => {
+    it("should calculate net profit without subtracting investments", () => {
       const totalRevenue = 10000;
       const totalExpenses = 3000;
       const totalInvestments = 2000;
       
-      const netProfit = totalRevenue - totalExpenses - totalInvestments;
-      expect(netProfit).toBe(5000);
+      const netProfit = totalRevenue - totalExpenses;
+      expect(totalInvestments).toBe(2000);
+      expect(netProfit).toBe(7000);
     });
 
     it("should handle zero values", () => {

@@ -782,7 +782,7 @@ export async function getExecutiveDashboard() {
       grossRevenue: roundMoney(grossRevenue),
       receivedRevenue: roundMoney(receivedRevenue),
       pendingRevenue: roundMoney(pendingRevenue),
-      expenses: roundMoney(money(finance.dre.operationalExpenses) + money(finance.dre.personalExpenses) + money(finance.dre.investments) + money(finance.dre.creditCardPending)),
+      expenses: roundMoney(money(finance.dre.operationalExpenses) + money(finance.dre.personalExpenses) + money(finance.dre.creditCardPending)),
       netProfit: roundMoney(netProfit),
       netMargin: roundMoney(netMargin),
       activeClients: clientIntelligence.summary.activeClients,
@@ -2174,7 +2174,7 @@ export async function calculateMonthlyFinancialSummary(periodId: number) {
     totalExpenses,
     totalInvestments,
     creditCardPending,
-    netProfit: totalRevenue - totalExpenses - totalInvestments,
+    netProfit: totalRevenue - totalExpenses,
   });
 }
 
@@ -2283,9 +2283,9 @@ export async function getStrategicFinance(year: number, month: number) {
   const taxes = 0;
   const companyExpenses = roundMoney(fixedCosts + variableCosts + collaboratorCostTotal + taxes);
   const operatingProfit = roundMoney(receivedRevenue - companyExpenses);
-  const netProfit = roundMoney(operatingProfit - personalExpenses - investmentsTotal - creditCardPending);
+  const netProfit = roundMoney(operatingProfit - personalExpenses - creditCardPending);
   const margin = receivedRevenue > 0 ? roundMoney((netProfit / receivedRevenue) * 100) : 0;
-  const availableCash = roundMoney(receivedRevenue - operationalExpenses - investmentsTotal - creditCardPending);
+  const availableCash = roundMoney(receivedRevenue - operationalExpenses - creditCardPending);
 
   const clientRevenue = clients
     .filter(client => client.status === "active")
