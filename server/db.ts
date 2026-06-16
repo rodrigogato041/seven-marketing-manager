@@ -2212,35 +2212,71 @@ function paymentMessage(companyName: string, amount: number) {
   return `Olá, tudo bem? Passando para lembrar que há um pagamento em aberto da ${companyName} no valor de ${formatted}, referente aos serviços da Seven Marketing. Qualquer dúvida, estou à disposição.`;
 }
 
-function buildCashWindow(days: number, now: number, payments: LocalRecord[], expenses: LocalRecord[], creditCards: LocalRecord[], collaborators: LocalRecord[]) {
+function buildCashWindow(days: number, now: number, payments: LocalRecord[], expenses: LocalRecord[], creditCards: LocalRecord[], collaborators: LocalRecord[], clients: LocalRecord[]) {
   const { start } = getDayRange(new Date(now));
   const end = start + days * 24 * 60 * 60 * 1000 - 1;
-  const receivables = payments
+  const clientsById = new Map(clients.map(client => [client.id, client]));
+  const receivableItems = payments
     .filter(payment => payment.status !== "paid" && asNumber(payment.dueDate) <= end)
-    .reduce((sum, payment) => sum + money(payment.amount), 0);
-  const datedExpenses = expenses
+    .map(payment => ({
+      type: "payment",
+      label: clientsById.get(payment.clientId)?.companyName ?? "Cliente sem nome",
+      description: payment.description || "Recebimento de cliente",
+      amount: roundMoney(money(payment.amount)),
+      dueDate: payment.dueDate,
+      status: asNumber(payment.dueDate) < start ? "Atrasado" : "A vencer",
+    }))
+    .sort((a, b) => asNumber(a.dueDate) - asNumber(b.dueDate));
+  const expenseItems = expenses
     .filter(expense => isInRange(expense.date, start, end))
-    .reduce((sum, expense) => sum + money(expense.amount), 0);
-  const cardPending = creditCards
+    .map(expense => ({
+      type: "expense",
+      label: expense.category || "Despesa",
+      description: expense.description || "Despesa registrada",
+      amount: roundMoney(money(expense.amount)),
+      dueDate: expense.date,
+      status: "A pagar",
+    }));
+  const cardItems = creditCards
     .filter(card => card.status === "pending" && asNumber(card.transactionDate) <= end)
-    .reduce((sum, card) => sum + money(card.amount), 0);
-  const collaboratorPayables = collaborators
+    .map(card => ({
+      type: "credit_card",
+      label: "Cartão de crédito",
+      description: card.description || card.category || "Compra no cartão",
+      amount: roundMoney(money(card.amount)),
+      dueDate: card.transactionDate,
+      status: "Pendente",
+    }));
+  const collaboratorItems = collaborators
     .filter(collaborator => collaborator.status !== "inactive" && asNumber(collaborator.monthlyCost) > 0)
-    .filter(collaborator => {
+    .map(collaborator => {
       const paymentDay = asNumber(collaborator.paymentDay);
-      if (!paymentDay) return days >= 30;
       const date = new Date(now);
-      const due = new Date(date.getFullYear(), date.getMonth(), Math.min(paymentDay, 28), 12, 0, 0, 0).getTime();
-      return due >= start && due <= end;
+      const dueDate = paymentDay
+        ? new Date(date.getFullYear(), date.getMonth(), Math.min(paymentDay, 28), 12, 0, 0, 0).getTime()
+        : start + 29 * DAY_MS;
+      return {
+        type: "collaborator",
+        label: collaborator.name,
+        description: collaborator.role || "Custo de colaborador",
+        amount: roundMoney(money(collaborator.monthlyCost)),
+        dueDate,
+        status: "A pagar",
+      };
     })
-    .reduce((sum, collaborator) => sum + money(collaborator.monthlyCost), 0);
-  const payables = datedExpenses + cardPending + collaboratorPayables;
+    .filter(item => item.dueDate >= start && item.dueDate <= end);
+  const payableItems = [...expenseItems, ...cardItems, ...collaboratorItems]
+    .sort((a, b) => asNumber(a.dueDate) - asNumber(b.dueDate));
+  const receivables = receivableItems.reduce((sum, item) => sum + item.amount, 0);
+  const payables = payableItems.reduce((sum, item) => sum + item.amount, 0);
   return {
     days,
     label: `Próximos ${days} dias`,
     totalReceivable: roundMoney(receivables),
     totalPayable: roundMoney(payables),
     projectedBalance: roundMoney(receivables - payables),
+    receivableItems,
+    payableItems,
     risk: receivables - payables < 0 ? "negative" : receivables - payables < payables * 0.15 ? "attention" : "healthy",
   };
 }
@@ -2297,7 +2333,7 @@ export async function getStrategicFinance(year: number, month: number) {
   const pendingPayments = payments.filter(payment => payment.status !== "paid");
   const overduePayments = pendingPayments.filter(payment => asNumber(payment.dueDate) < now);
   const pendingAmount = pendingPayments.reduce((sum, payment) => sum + money(payment.amount), 0);
-  const cashflow = [7, 15, 30].map(days => buildCashWindow(days, now, pendingPayments, monthExpenses, creditCards, collaborators));
+  const cashflow = [7, 15, 30].map(days => buildCashWindow(days, now, pendingPayments, monthExpenses, creditCards, collaborators, clients));
 
   const riskAlerts = [
     grossRevenue > 0 && fixedCosts / grossRevenue > 0.5 ? {

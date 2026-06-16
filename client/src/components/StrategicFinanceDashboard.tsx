@@ -82,6 +82,49 @@ function Row({ label, value, muted = false }: { label: string; value: string; mu
   );
 }
 
+function CashItemList({
+  title,
+  items,
+  empty,
+  tone,
+  financialValue,
+}: {
+  title: string;
+  items: any[];
+  empty: string;
+  tone: string;
+  financialValue: (value: string) => string;
+}) {
+  return (
+    <div className="rounded-lg border bg-muted/20 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase text-muted-foreground">{title}</p>
+        <Badge variant="secondary" className="bg-white">{items.length}</Badge>
+      </div>
+      {items.length === 0 ? (
+        <p className="rounded-md border border-dashed bg-white px-3 py-3 text-center text-xs text-muted-foreground">{empty}</p>
+      ) : (
+        <div className="space-y-2">
+          {items.map((item, index) => (
+            <div key={`${item.type}-${item.label}-${item.dueDate}-${index}`} className="rounded-md border bg-white p-2">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{item.label}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{item.description}</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">Vencimento {formatDate(item.dueDate)} · {item.status}</p>
+                </div>
+                <span className={`shrink-0 text-sm font-semibold tabular-nums ${tone}`}>
+                  {financialValue(formatCurrency(item.amount))}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function StrategicFinanceDashboard({
   year,
   month,
@@ -250,6 +293,22 @@ export function StrategicFinanceDashboard({
                 <Row label="A receber" value={financialValue(formatCurrency(window.totalReceivable))} />
                 <Row label="A pagar" value={financialValue(formatCurrency(window.totalPayable))} />
                 <Row label="Saldo previsto" value={financialValue(formatCurrency(window.projectedBalance))} />
+                <div className="mt-3 grid gap-3">
+                  <CashItemList
+                    title="Recebimentos previstos"
+                    items={window.receivableItems ?? []}
+                    empty="Nenhum cliente com recebimento previsto nesta janela."
+                    tone="text-emerald-700"
+                    financialValue={financialValue}
+                  />
+                  <CashItemList
+                    title="Saídas previstas"
+                    items={window.payableItems ?? []}
+                    empty="Nenhuma saída prevista nesta janela."
+                    tone="text-rose-700"
+                    financialValue={financialValue}
+                  />
+                </div>
               </div>
             ))}
           </CardContent>
