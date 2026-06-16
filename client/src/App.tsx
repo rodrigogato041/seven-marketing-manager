@@ -11,6 +11,7 @@ import ClientDetailPage from "./pages/ClientDetail";
 import CollaboratorsPage from "./pages/Collaborators";
 import TasksPage from "./pages/Tasks";
 import CalendarPage from "./pages/CalendarPage";
+import ProductionPage from "./pages/Production";
 import { lazy, Suspense } from "react";
 
 const FinancialPage = lazy(() => import("./pages/Financial"));
@@ -24,6 +25,7 @@ function Router() {
         <Route path="/clientes/:id" component={ClientDetailPage} />
         <Route path="/colaboradores" component={CollaboratorsPage} />
         <Route path="/tarefas" component={TasksPage} />
+        <Route path="/producao" component={ProductionPage} />
         <Route path="/calendario" component={CalendarPage} />
         <Route path="/financeiro">
           {() => (

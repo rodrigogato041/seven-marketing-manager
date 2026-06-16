@@ -32,6 +32,8 @@ const taskTypeSchema = z.enum([
   "capture",
   "planning",
 ]);
+const editorialStatusSchema = z.enum(["idea", "script", "production", "editing", "approval", "changes", "approved", "scheduled", "published", "archived"]);
+const approvalStatusSchema = z.enum(["not_sent", "sent", "waiting", "approved", "changes_requested", "rejected", "published"]);
 
 // ─── Client Router ───
 const clientRouter = router({
@@ -377,6 +379,70 @@ const contentProductionRouter = router({
     const [year, monthStr] = input.month.split('-');
     return db.updateProductionTracking(input.clientId, parseInt(year), parseInt(monthStr), input.videosProduced, input.imagesProduced);
   }),
+  listContent: protectedProcedure.input(z.object({
+    clientId: z.number().optional(),
+    year: z.number().optional(),
+    month: z.number().min(1).max(12).optional(),
+    status: editorialStatusSchema.optional(),
+    approvalStatus: approvalStatusSchema.optional(),
+    contentType: z.string().optional(),
+    campaign: z.string().optional(),
+  }).optional()).query(({ input }) => db.listContentItems(input ?? {})),
+  createContent: protectedProcedure.input(z.object({
+    clientId: z.number(),
+    collaboratorId: z.number().optional(),
+    contentType: z.string().min(1),
+    theme: z.string().min(1),
+    campaign: z.string().optional(),
+    scheduledDate: z.number().optional(),
+    publishedAt: z.number().optional(),
+    status: editorialStatusSchema.optional(),
+    approvalStatus: approvalStatusSchema.optional(),
+    sentAt: z.number().optional(),
+    approvedAt: z.number().optional(),
+    caption: z.string().optional(),
+    notes: z.string().optional(),
+    fileUrl: z.string().optional(),
+    publishedUrl: z.string().optional(),
+    clientComment: z.string().optional(),
+    internalComment: z.string().optional(),
+    revisionOwnerId: z.number().optional(),
+  })).mutation(({ input }) => db.createContentItem(input)),
+  updateContent: protectedProcedure.input(z.object({
+    id: z.number(),
+    clientId: z.number().optional(),
+    collaboratorId: z.number().optional().nullable(),
+    contentType: z.string().optional(),
+    theme: z.string().optional(),
+    campaign: z.string().optional().nullable(),
+    scheduledDate: z.number().optional().nullable(),
+    publishedAt: z.number().optional().nullable(),
+    status: editorialStatusSchema.optional(),
+    approvalStatus: approvalStatusSchema.optional(),
+    sentAt: z.number().optional().nullable(),
+    approvedAt: z.number().optional().nullable(),
+    caption: z.string().optional().nullable(),
+    notes: z.string().optional().nullable(),
+    fileUrl: z.string().optional().nullable(),
+    publishedUrl: z.string().optional().nullable(),
+    clientComment: z.string().optional().nullable(),
+    internalComment: z.string().optional().nullable(),
+    revisionOwnerId: z.number().optional().nullable(),
+  })).mutation(({ input }) => {
+    const { id, ...data } = input;
+    return db.updateContentItem(id, data);
+  }),
+  deleteContent: protectedProcedure.input(z.object({ id: z.number() })).mutation(({ input }) => db.deleteContentItem(input.id)),
+  summary: protectedProcedure.input(z.object({
+    year: z.number(),
+    month: z.number().min(1).max(12),
+    clientId: z.number().optional(),
+  })).query(({ input }) => db.getContentStudioSummary(input.year, input.month, input.clientId)),
+  clientReport: protectedProcedure.input(z.object({
+    clientId: z.number(),
+    year: z.number(),
+    month: z.number().min(1).max(12),
+  })).query(({ input }) => db.getClientContentReport(input.clientId, input.year, input.month)),
 });
 
 // ─── Investments Router ───

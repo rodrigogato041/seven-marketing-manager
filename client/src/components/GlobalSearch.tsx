@@ -6,6 +6,7 @@ import {
   CalendarDays,
   CreditCard,
   FileSearch,
+  Film,
   Search,
   TrendingUp,
   UserCog,
@@ -26,6 +27,7 @@ const categoryIcons: Record<string, ElementType> = {
   investments: TrendingUp,
   creditCards: CreditCard,
   production: FileSearch,
+  content: Film,
 };
 
 function formatMeta(meta: unknown) {
@@ -65,7 +67,7 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
   const categories = data?.categories ?? [];
   const total = data?.total ?? 0;
   const placeholder = useMemo(
-    () => compact ? "Buscar..." : "Buscar cliente, tarefa, despesa ou evento",
+    () => compact ? "Buscar..." : "Buscar cliente, tarefa, conteúdo, despesa ou evento",
     [compact]
   );
 

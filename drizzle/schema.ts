@@ -166,6 +166,35 @@ export const productionTracking = mysqlTable("productionTracking", {
 export type ProductionTracking = typeof productionTracking.$inferSelect;
 export type InsertProductionTracking = typeof productionTracking.$inferInsert;
 
+// ─── Editorial Content Items ───
+export const contentItems = mysqlTable("contentItems", {
+  id: int("id").autoincrement().primaryKey(),
+  clientId: int("clientId").notNull(),
+  collaboratorId: int("collaboratorId"),
+  contentType: varchar("contentType", { length: 120 }).notNull(),
+  theme: varchar("theme", { length: 500 }).notNull(),
+  campaign: varchar("campaign", { length: 255 }),
+  scheduledDate: bigint("scheduledDate", { mode: "number" }),
+  publishedAt: bigint("publishedAt", { mode: "number" }),
+  status: mysqlEnum("editorialStatus", ["idea", "script", "production", "editing", "approval", "changes", "approved", "scheduled", "published", "archived"]).default("idea").notNull(),
+  approvalStatus: mysqlEnum("approvalStatus", ["not_sent", "sent", "waiting", "approved", "changes_requested", "rejected", "published"]).default("not_sent").notNull(),
+  sentAt: bigint("sentAt", { mode: "number" }),
+  approvedAt: bigint("approvedAt", { mode: "number" }),
+  caption: text("caption"),
+  notes: text("notes"),
+  fileUrl: text("fileUrl"),
+  publishedUrl: text("publishedUrl"),
+  clientComment: text("clientComment"),
+  internalComment: text("internalComment"),
+  revisionOwnerId: int("revisionOwnerId"),
+  versionHistory: text("versionHistory"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ContentItem = typeof contentItems.$inferSelect;
+export type InsertContentItem = typeof contentItems.$inferInsert;
+
 // ─── Events (Calendar) ───
 export const events = mysqlTable("events", {
   id: int("id").autoincrement().primaryKey(),

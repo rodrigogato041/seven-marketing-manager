@@ -134,6 +134,26 @@ describe("payments router", () => {
   });
 });
 
+describe("content production router", () => {
+  it("requires authentication for listContent", async () => {
+    const ctx = createUnauthContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.contentProduction.listContent()).rejects.toThrow();
+  });
+
+  it("requires authentication for createContent", async () => {
+    const ctx = createUnauthContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(
+      caller.contentProduction.createContent({
+        clientId: 1,
+        contentType: "Reel",
+        theme: "Tema de teste",
+      })
+    ).rejects.toThrow();
+  });
+});
+
 describe("expenses router", () => {
   it("requires authentication for list", async () => {
     const ctx = createUnauthContext();

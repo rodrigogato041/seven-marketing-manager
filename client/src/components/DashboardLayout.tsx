@@ -36,6 +36,7 @@ import {
   CalendarDays,
   CheckCheck,
   DollarSign,
+  Film,
   KanbanSquare,
   LayoutDashboard,
   LogOut,
@@ -62,6 +63,7 @@ const navigationGroups = [
       { icon: Users, label: "Clientes", path: "/clientes" },
       { icon: UserCog, label: "Colaboradores", path: "/colaboradores" },
       { icon: KanbanSquare, label: "Tarefas", path: "/tarefas" },
+      { icon: Film, label: "Produção", path: "/producao" },
     ],
   },
   {

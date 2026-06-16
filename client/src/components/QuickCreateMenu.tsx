@@ -27,6 +27,7 @@ import {
   Banknote,
   CalendarPlus,
   CreditCard,
+  FileText,
   Film,
   Plus,
   Receipt,
@@ -45,6 +46,7 @@ type QuickCreateType =
   | "expense"
   | "payment"
   | "event"
+  | "content"
   | "production"
   | "investment"
   | "card"
@@ -56,6 +58,7 @@ const actionLabels: Record<QuickCreateType, string> = {
   expense: "Nova despesa",
   payment: "Novo pagamento",
   event: "Novo evento",
+  content: "Novo conteúdo",
   production: "Nova produção",
   investment: "Novo investimento",
   card: "Nova compra no cartão",
@@ -68,6 +71,7 @@ const actions: { type: QuickCreateType; icon: ElementType }[] = [
   { type: "expense", icon: Receipt },
   { type: "payment", icon: Banknote },
   { type: "event", icon: CalendarPlus },
+  { type: "content", icon: FileText },
   { type: "production", icon: Film },
   { type: "investment", icon: TrendingUp },
   { type: "card", icon: CreditCard },
@@ -136,6 +140,8 @@ function emptyForm() {
     role: "",
     type: "fixed",
     monthlyCost: "",
+    contentType: "Reel",
+    campaign: "",
   };
 }
 
@@ -183,6 +189,12 @@ export function QuickCreateMenu({ compact = false }: { compact?: boolean }) {
   const createEvent = trpc.events.create.useMutation({
     onSuccess: () => onSuccess("Evento criado!", () => utils.events.list.invalidate()),
   });
+  const createContent = trpc.contentProduction.createContent.useMutation({
+    onSuccess: () => onSuccess("Conteúdo criado!", async () => {
+      await utils.contentProduction.listContent.invalidate();
+      await utils.contentProduction.summary.invalidate();
+    }),
+  });
   const createInvestment = trpc.investments.create.useMutation({
     onSuccess: () => onSuccess("Investimento registrado!", async () => {
       await utils.investments.list.invalidate();
@@ -208,6 +220,7 @@ export function QuickCreateMenu({ compact = false }: { compact?: boolean }) {
     createExpense,
     createPayment,
     createEvent,
+    createContent,
     createInvestment,
     createCard,
     createCollaborator,
@@ -221,6 +234,7 @@ export function QuickCreateMenu({ compact = false }: { compact?: boolean }) {
     if (activeType === "expense") return form.amount && form.category.trim();
     if (activeType === "payment") return form.clientId && form.amount;
     if (activeType === "event") return form.title.trim().length > 0;
+    if (activeType === "content") return form.clientId && form.title.trim().length > 0;
     if (activeType === "production") return form.clientId && form.month;
     if (activeType === "investment") return form.title.trim() && form.amount;
     if (activeType === "card") return form.title.trim() && form.amount && form.category.trim();
@@ -294,6 +308,21 @@ export function QuickCreateMenu({ compact = false }: { compact?: boolean }) {
         startTime: parseDateTime(form.date, form.time),
         clientId: form.clientId ? Number(form.clientId) : undefined,
         collaboratorId: form.collaboratorId ? Number(form.collaboratorId) : undefined,
+      });
+      return;
+    }
+
+    if (activeType === "content") {
+      createContent.mutate({
+        clientId: Number(form.clientId),
+        collaboratorId: form.collaboratorId ? Number(form.collaboratorId) : undefined,
+        contentType: form.contentType,
+        theme: form.title.trim(),
+        campaign: form.campaign.trim() || undefined,
+        scheduledDate: form.date ? parseLocalDate(form.date) : undefined,
+        status: "idea",
+        approvalStatus: "not_sent",
+        caption: form.description.trim() || undefined,
       });
       return;
     }
@@ -428,6 +457,31 @@ export function QuickCreateMenu({ compact = false }: { compact?: boolean }) {
                 <ClientSelect clients={clients} value={form.clientId} onChange={value => setForm(f => ({ ...f, clientId: value }))} />
                 <CollaboratorSelect collaborators={collaborators} value={form.collaboratorId} onChange={value => setForm(f => ({ ...f, collaboratorId: value }))} />
                 <TextareaField label="Descrição" value={form.description} onChange={value => setForm(f => ({ ...f, description: value }))} />
+              </>
+            ) : null}
+
+            {activeType === "content" ? (
+              <>
+                <ClientSelect clients={clients} value={form.clientId} onChange={value => setForm(f => ({ ...f, clientId: value }))} />
+                <CollaboratorSelect collaborators={collaborators} value={form.collaboratorId} onChange={value => setForm(f => ({ ...f, collaboratorId: value }))} />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Tema" value={form.title} onChange={value => setForm(f => ({ ...f, title: value }))} />
+                  <SelectField label="Tipo" value={form.contentType} onChange={value => setForm(f => ({ ...f, contentType: value }))} items={[
+                    ["Reel", "Reel"],
+                    ["Arte", "Arte"],
+                    ["Story", "Story"],
+                    ["Vídeo", "Vídeo"],
+                    ["Legenda", "Legenda"],
+                    ["Campanha", "Campanha"],
+                    ["Relatório", "Relatório"],
+                    ["Outro", "Outro"],
+                  ]} />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Data prevista" type="date" value={form.date} onChange={value => setForm(f => ({ ...f, date: value }))} />
+                  <Field label="Campanha" value={form.campaign} onChange={value => setForm(f => ({ ...f, campaign: value }))} />
+                </div>
+                <TextareaField label="Legenda" value={form.description} onChange={value => setForm(f => ({ ...f, description: value }))} />
               </>
             ) : null}
 

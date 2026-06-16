@@ -12,6 +12,7 @@ import type {
   InsertEvent,
   InsertNotification,
   InsertProductionTracking,
+  InsertContentItem,
   InsertInvestment,
   InsertCreditCardTransaction,
   InsertMonthlyPeriod,
@@ -33,6 +34,7 @@ type TableName =
   | "events"
   | "notifications"
   | "productionTracking"
+  | "contentItems"
   | "investments"
   | "creditCardTransactions"
   | "monthlyPeriods"
@@ -65,6 +67,7 @@ const tableNames: TableName[] = [
   "events",
   "notifications",
   "productionTracking",
+  "contentItems",
   "investments",
   "creditCardTransactions",
   "monthlyPeriods",
@@ -453,6 +456,7 @@ export async function deleteClientCascade(clientId: number) {
   for (const document of await listDocuments(clientId)) await deleteDocument(document.id);
   for (const event of (await listEvents()).filter(item => item.clientId === clientId)) await deleteEvent(event.id);
   for (const task of (await listTasks()).filter(item => item.clientId === clientId)) await deleteTask(task.id);
+  for (const content of await listContentItems({ clientId })) await deleteContentItem(content.id);
   await deleteClient(clientId);
 }
 
@@ -634,7 +638,7 @@ export async function globalSearch(query: string) {
     return { query: q, categories: [], total: 0 };
   }
 
-  const [clients, tasks, expenses, payments, collaborators, events, investments, creditCards, production] = await Promise.all([
+  const [clients, tasks, expenses, payments, collaborators, events, investments, creditCards, production, contentItems] = await Promise.all([
     listClients(),
     listTasks(),
     listExpenses(),
@@ -644,6 +648,7 @@ export async function globalSearch(query: string) {
     listInvestments(),
     listCreditCardTransactions(),
     list("productionTracking"),
+    listContentItems(),
   ]);
   const clientsById = new Map(clients.map(client => [client.id, client]));
   const limit = 6;
@@ -786,6 +791,30 @@ export async function globalSearch(query: string) {
           href: clientsById.get(item.clientId) ? `/clientes/${item.clientId}` : "/clientes",
         })),
     },
+    {
+      type: "content",
+      label: "Conteúdos",
+      items: contentItems
+        .filter(item => textMatches(q, [
+          item.theme,
+          item.caption,
+          item.notes,
+          item.campaign,
+          item.contentType,
+          item.status,
+          item.approvalStatus,
+          item.publishedUrl,
+          clientsById.get(item.clientId)?.companyName,
+        ]))
+        .slice(0, limit)
+        .map(item => ({
+          id: item.id,
+          title: item.theme,
+          subtitle: clientsById.get(item.clientId)?.companyName ?? item.contentType,
+          meta: contentStatusLabel(item.status),
+          href: "/producao",
+        })),
+    },
   ].filter(category => category.items.length > 0);
 
   return {
@@ -819,6 +848,178 @@ export async function getProductionTrackingForClient(clientId: number, year: num
     imageTarget,
     videoProgress: ((tracking.videosProduced || 0) / (videoTarget || 1)) * 100,
     imageProgress: ((tracking.imagesProduced || 0) / (imageTarget || 1)) * 100,
+  };
+}
+
+type ContentFilters = {
+  clientId?: number;
+  year?: number;
+  month?: number;
+  status?: string;
+  approvalStatus?: string;
+  contentType?: string;
+  campaign?: string;
+};
+
+function contentInPeriod(content: LocalRecord, start: number, end: number) {
+  return [content.scheduledDate, content.publishedAt, content.sentAt, content.approvedAt, content.createdAt ? new Date(content.createdAt).getTime() : null]
+    .some(value => value && isInRange(value, start, end));
+}
+
+function contentStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    idea: "Ideia",
+    script: "Roteiro",
+    production: "Em produção",
+    editing: "Em edição",
+    approval: "Em aprovação",
+    changes: "Alteração solicitada",
+    approved: "Aprovado",
+    scheduled: "Agendado",
+    published: "Publicado",
+    archived: "Arquivado",
+  };
+  return labels[status] ?? status;
+}
+
+export async function listContentItems(filters: ContentFilters = {}) {
+  const rows = await list("contentItems");
+  const period = filters.year && filters.month ? getMonthRange(filters.year, filters.month) : null;
+  return rows
+    .filter(item => !filters.clientId || item.clientId === filters.clientId)
+    .filter(item => !filters.status || item.status === filters.status)
+    .filter(item => !filters.approvalStatus || item.approvalStatus === filters.approvalStatus)
+    .filter(item => !filters.contentType || item.contentType === filters.contentType)
+    .filter(item => !filters.campaign || String(item.campaign ?? "").toLowerCase().includes(filters.campaign!.toLowerCase()))
+    .filter(item => !period || contentInPeriod(item, period.start, period.end))
+    .sort((a, b) => asNumber(a.scheduledDate ?? new Date(a.createdAt).getTime()) - asNumber(b.scheduledDate ?? new Date(b.createdAt).getTime()));
+}
+
+export async function getContentItemById(id: number) {
+  return (await list("contentItems")).find(item => item.id === id);
+}
+
+export async function createContentItem(data: Omit<InsertContentItem, "id" | "createdAt" | "updatedAt">) {
+  const record = await insert("contentItems", {
+    status: "idea",
+    approvalStatus: "not_sent",
+    versionHistory: "[]",
+    ...data,
+  });
+  return { id: record.id };
+}
+
+export async function updateContentItem(id: number, data: Partial<InsertContentItem>) {
+  const existing = await getContentItemById(id);
+  const history = (() => {
+    try {
+      return JSON.parse(existing?.versionHistory || "[]");
+    } catch {
+      return [];
+    }
+  })();
+  if (existing && (data.caption !== undefined || data.fileUrl !== undefined || data.publishedUrl !== undefined || data.status !== undefined || data.approvalStatus !== undefined)) {
+    history.push({
+      at: new Date().toISOString(),
+      status: data.status ?? existing.status,
+      approvalStatus: data.approvalStatus ?? existing.approvalStatus,
+      captionChanged: data.caption !== undefined && data.caption !== existing.caption,
+      fileChanged: data.fileUrl !== undefined && data.fileUrl !== existing.fileUrl,
+      publishedUrlChanged: data.publishedUrl !== undefined && data.publishedUrl !== existing.publishedUrl,
+    });
+  }
+  const values = { ...data };
+  if (history.length) values.versionHistory = JSON.stringify(history.slice(-20));
+  await update("contentItems", id, values);
+}
+
+export async function deleteContentItem(id: number) {
+  await remove("contentItems", id);
+}
+
+export async function getContentStudioSummary(year: number, month: number, clientId?: number) {
+  const [items, clients, collaborators] = await Promise.all([
+    listContentItems({ year, month, clientId }),
+    listClients(),
+    listCollaborators(),
+  ]);
+  const clientsById = new Map(clients.map(client => [client.id, client]));
+  const collaboratorsById = new Map(collaborators.map(collaborator => [collaborator.id, collaborator]));
+  const now = nowMs();
+  const openStatuses = new Set(["idea", "script", "production", "editing", "approval", "changes", "scheduled"]);
+  const published = items.filter(item => item.status === "published");
+  const approved = items.filter(item => item.status === "approved" || item.approvalStatus === "approved");
+  const awaitingApproval = items.filter(item => item.status === "approval" || item.approvalStatus === "waiting" || item.approvalStatus === "sent");
+  const overdue = items.filter(item => openStatuses.has(item.status) && item.scheduledDate && asNumber(item.scheduledDate) < now);
+  const upcoming = items.filter(item => openStatuses.has(item.status) && item.scheduledDate && asNumber(item.scheduledDate) >= now).slice(0, 8);
+  const byStatus = Object.entries(items.reduce((acc, item) => {
+    acc[item.status] = (acc[item.status] ?? 0) + 1;
+    return acc;
+  }, {} as Record<string, number>)).map(([status, count]) => ({ status, label: contentStatusLabel(status), count }));
+
+  return {
+    summary: {
+      total: items.length,
+      published: published.length,
+      approved: approved.length,
+      awaitingApproval: awaitingApproval.length,
+      overdue: overdue.length,
+      library: items.filter(item => item.status !== "archived").length,
+    },
+    byStatus,
+    upcoming: upcoming.map(item => ({ ...item, companyName: clientsById.get(item.clientId)?.companyName ?? "Cliente", collaboratorName: collaboratorsById.get(item.collaboratorId)?.name ?? null })),
+    overdue: overdue.slice(0, 8).map(item => ({ ...item, companyName: clientsById.get(item.clientId)?.companyName ?? "Cliente", collaboratorName: collaboratorsById.get(item.collaboratorId)?.name ?? null })),
+  };
+}
+
+export async function getClientContentReport(clientId: number, year: number, month: number) {
+  const [client, content, tasks, payments] = await Promise.all([
+    getClientById(clientId),
+    listContentItems({ clientId, year, month }),
+    listTasks(),
+    listPayments(clientId),
+  ]);
+  if (!client) return null;
+  const { start, end } = getMonthRange(year, month);
+  const monthTasks = tasks.filter(task => task.clientId === clientId && (
+    isInRange(task.dueDate, start, end) ||
+    isInRange(task.createdAt ? new Date(task.createdAt).getTime() : null, start, end) ||
+    isInRange(task.updatedAt ? new Date(task.updatedAt).getTime() : null, start, end)
+  ));
+  const monthPayments = payments.filter(payment => isInRange(payment.dueDate, start, end) || isInRange(payment.paidDate, start, end));
+  const published = content.filter(item => item.status === "published");
+  const delivered = content.filter(item => ["approved", "scheduled", "published"].includes(item.status));
+  const pending = content.filter(item => !["approved", "scheduled", "published", "archived"].includes(item.status));
+  const campaigns = Array.from(new Set(content.map(item => item.campaign).filter(Boolean)));
+  const received = monthPayments.filter(payment => payment.status === "paid").reduce((sum, payment) => sum + money(payment.amount), 0);
+  const pendingPayments = monthPayments.filter(payment => payment.status !== "paid").reduce((sum, payment) => sum + money(payment.amount), 0);
+
+  return {
+    client: {
+      id: client.id,
+      companyName: client.companyName,
+      contactName: client.contactName,
+      services: serviceListForClient(client),
+      monthlyValue: money(client.monthlyValue),
+    },
+    period: { year, month, start, end },
+    content: {
+      total: content.length,
+      delivered: delivered.length,
+      published: published.length,
+      pending: pending.length,
+      items: content,
+      campaigns,
+    },
+    tasks: {
+      completed: monthTasks.filter(task => task.status === "done").length,
+      open: monthTasks.filter(task => task.status !== "done").length,
+    },
+    financial: {
+      received: roundMoney(received),
+      pending: roundMoney(pendingPayments),
+    },
+    nextSteps: pending.slice(0, 5).map(item => `${contentStatusLabel(item.status)}: ${item.theme}`),
   };
 }
 
