@@ -124,6 +124,14 @@ describe("tasks router", () => {
       caller.tasks.create({ title: "Test Task" })
     ).rejects.toThrow();
   });
+
+  it("requires authentication for addComment", async () => {
+    const ctx = createUnauthContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(
+      caller.tasks.addComment({ id: 1, text: "Comentário interno" })
+    ).rejects.toThrow();
+  });
 });
 
 describe("payments router", () => {

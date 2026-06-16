@@ -255,14 +255,116 @@ export async function createTask(data: Omit<InsertTask, "id" | "createdAt" | "up
     priority: "medium",
     taskType: "administrative",
     checklist: "[]",
+    recurrence: "none",
+    recurrenceEvery: 1,
+    comments: "[]",
+    history: "[]",
+    relatedLinks: "[]",
+    attachmentLinks: "[]",
     sortOrder: 0,
     ...data,
   });
   return { id: record.id };
 }
 
+function parseJsonArray(value: unknown) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(String(value));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function taskHistoryEntry(action: string, details: Record<string, unknown> = {}) {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    action,
+    details,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function addDaysTimestamp(value: number, days: number) {
+  const date = new Date(value);
+  date.setDate(date.getDate() + days);
+  return date.getTime();
+}
+
+function nextRecurringDueDate(task: LocalRecord) {
+  const base = asNumber(task.dueDate || nowMs());
+  const every = Math.max(1, asNumber(task.recurrenceEvery) || 1);
+  if (task.recurrence === "daily") return addDaysTimestamp(base, every);
+  if (task.recurrence === "weekly") return addDaysTimestamp(base, 7 * every);
+  if (task.recurrence === "biweekly") return addDaysTimestamp(base, 14 * every);
+  if (task.recurrence === "monthly") {
+    const date = new Date(base);
+    date.setMonth(date.getMonth() + every);
+    return date.getTime();
+  }
+  if (task.recurrence === "custom") return addDaysTimestamp(base, every);
+  return null;
+}
+
+function resetChecklistForRecurrence(value: unknown) {
+  return JSON.stringify(parseJsonArray(value).map(item => ({ ...item, done: false })));
+}
+
+async function createNextRecurringTask(task: LocalRecord) {
+  if (!task.recurrence || task.recurrence === "none") return;
+  const dueDate = nextRecurringDueDate(task);
+  if (!dueDate) return;
+  if (task.recurrenceUntil && dueDate > asNumber(task.recurrenceUntil)) return;
+  await createTask({
+    title: task.title,
+    description: task.description,
+    status: "todo",
+    priority: task.priority,
+    taskType: task.taskType,
+    checklist: resetChecklistForRecurrence(task.checklist),
+    recurrence: task.recurrence,
+    recurrenceEvery: task.recurrenceEvery,
+    recurrenceUntil: task.recurrenceUntil,
+    recurrenceParentId: task.recurrenceParentId || task.id,
+    comments: "[]",
+    history: JSON.stringify([taskHistoryEntry("Tarefa criada automaticamente pela recorrência", { sourceTaskId: task.id })]),
+    relatedLinks: task.relatedLinks || "[]",
+    attachmentLinks: task.attachmentLinks || "[]",
+    clientId: task.clientId,
+    collaboratorId: task.collaboratorId,
+    dueDate,
+    sortOrder: task.sortOrder,
+  } as any);
+  await update("tasks", task.id, { recurrenceLastGeneratedAt: nowMs() });
+}
+
 export async function updateTask(id: number, data: Partial<InsertTask>) {
-  await update("tasks", id, data);
+  const existing = await getTaskById(id);
+  if (!existing) return;
+  const previousTask = { ...existing };
+  const history = parseJsonArray(existing.history);
+  const trackedFields: { key: keyof InsertTask; label: string }[] = [
+    { key: "status", label: "Status alterado" },
+    { key: "collaboratorId", label: "Responsável alterado" },
+    { key: "dueDate", label: "Prazo alterado" },
+    { key: "priority", label: "Prioridade alterada" },
+  ];
+  for (const field of trackedFields) {
+    if (Object.prototype.hasOwnProperty.call(data, field.key) && (data as any)[field.key] !== (existing as any)[field.key]) {
+      history.push(taskHistoryEntry(field.label, { from: (existing as any)[field.key] ?? null, to: (data as any)[field.key] ?? null }));
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(data, "checklist") && data.checklist !== existing.checklist) {
+    history.push(taskHistoryEntry("Checklist atualizado"));
+  }
+  await update("tasks", id, {
+    ...data,
+    history: history.length ? JSON.stringify(history.slice(-50)) : existing.history,
+  });
+  if (previousTask.status !== "done" && data.status === "done") {
+    await createNextRecurringTask({ ...previousTask, ...data });
+  }
 }
 
 export async function deleteTask(id: number) {
@@ -271,8 +373,27 @@ export async function deleteTask(id: number) {
 
 export async function updateTasksOrder(updates: { id: number; status: string; sortOrder: number }[]) {
   for (const item of updates) {
-    await update("tasks", item.id, { status: item.status, sortOrder: item.sortOrder });
+    await updateTask(item.id, { status: item.status as any, sortOrder: item.sortOrder });
   }
+}
+
+export async function addTaskComment(id: number, text: string, author = "Seven Admin") {
+  const task = await getTaskById(id);
+  if (!task) return null;
+  const comments = parseJsonArray(task.comments);
+  const history = parseJsonArray(task.history);
+  comments.push({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    text,
+    author,
+    createdAt: new Date().toISOString(),
+  });
+  history.push(taskHistoryEntry("Comentário adicionado"));
+  await update("tasks", id, {
+    comments: JSON.stringify(comments.slice(-100)),
+    history: JSON.stringify(history.slice(-50)),
+  });
+  return { success: true };
 }
 
 export async function listPayments(clientId?: number) {
@@ -683,7 +804,18 @@ export async function globalSearch(query: string) {
       type: "tasks",
       label: "Tarefas",
       items: tasks
-        .filter(task => textMatches(q, [task.title, task.description, task.status, task.priority, task.taskType, clientsById.get(task.clientId)?.companyName]))
+        .filter(task => textMatches(q, [
+          task.title,
+          task.description,
+          task.status,
+          task.priority,
+          task.taskType,
+          task.recurrence,
+          task.comments,
+          task.relatedLinks,
+          task.attachmentLinks,
+          clientsById.get(task.clientId)?.companyName,
+        ]))
         .slice(0, limit)
         .map(task => ({
           id: task.id,

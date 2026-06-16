@@ -16,6 +16,7 @@ import { budgetAlertsRouter } from "./budgetAlertsRouter";
 import { googleCalendarRouter } from "./googleCalendarRouter";
 
 const taskPrioritySchema = z.enum(["low", "medium", "high", "urgent"]);
+const taskRecurrenceSchema = z.enum(["none", "daily", "weekly", "biweekly", "monthly", "custom"]);
 const taskTypeSchema = z.enum([
   "art",
   "video",
@@ -171,9 +172,17 @@ const taskRouter = router({
     priority: taskPrioritySchema.optional(),
     taskType: taskTypeSchema.optional(),
     checklist: z.string().optional(),
-    clientId: z.number().optional(),
-    collaboratorId: z.number().optional(),
-    dueDate: z.number().optional(),
+    recurrence: taskRecurrenceSchema.optional(),
+    recurrenceEvery: z.number().min(1).optional(),
+    recurrenceUntil: z.number().optional().nullable(),
+    recurrenceParentId: z.number().optional().nullable(),
+    comments: z.string().optional(),
+    history: z.string().optional(),
+    relatedLinks: z.string().optional(),
+    attachmentLinks: z.string().optional(),
+    clientId: z.number().optional().nullable(),
+    collaboratorId: z.number().optional().nullable(),
+    dueDate: z.number().optional().nullable(),
     sortOrder: z.number().optional(),
   })).mutation(async ({ input }) => {
     const result = await db.createTask(input);
@@ -190,15 +199,27 @@ const taskRouter = router({
     priority: taskPrioritySchema.optional(),
     taskType: taskTypeSchema.optional(),
     checklist: z.string().optional(),
-    clientId: z.number().optional(),
-    collaboratorId: z.number().optional(),
-    dueDate: z.number().optional(),
+    recurrence: taskRecurrenceSchema.optional(),
+    recurrenceEvery: z.number().min(1).optional().nullable(),
+    recurrenceUntil: z.number().optional().nullable(),
+    recurrenceParentId: z.number().optional().nullable(),
+    comments: z.string().optional(),
+    history: z.string().optional(),
+    relatedLinks: z.string().optional(),
+    attachmentLinks: z.string().optional(),
+    clientId: z.number().optional().nullable(),
+    collaboratorId: z.number().optional().nullable(),
+    dueDate: z.number().optional().nullable(),
     sortOrder: z.number().optional(),
   })).mutation(({ input }) => {
     const { id, ...data } = input;
     return db.updateTask(id, data);
   }),
   delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(({ input }) => db.deleteTask(input.id)),
+  addComment: protectedProcedure.input(z.object({
+    id: z.number(),
+    text: z.string().min(1),
+  })).mutation(({ input, ctx }) => db.addTaskComment(input.id, input.text, ctx.user?.name || ctx.user?.email || "Seven Admin")),
   reorder: protectedProcedure.input(z.object({
     updates: z.array(z.object({ id: z.number(), status: z.string(), sortOrder: z.number() })),
   })).mutation(({ input }) => db.updateTasksOrder(input.updates)),

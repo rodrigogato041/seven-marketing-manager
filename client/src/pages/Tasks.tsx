@@ -12,11 +12,12 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, GripVertical, Calendar, User, Building2, ListChecks, Search } from "lucide-react";
+import { Plus, GripVertical, Calendar, User, Building2, ListChecks, Search, Repeat2, MessageSquare, History, Link as LinkIcon, Paperclip } from "lucide-react";
 import { toast } from "sonner";
 
 type TaskStatus = "todo" | "in_progress" | "done";
 type TaskPriority = "low" | "medium" | "high" | "urgent";
+type TaskRecurrence = "none" | "daily" | "weekly" | "biweekly" | "monthly" | "custom";
 type ChecklistItem = { id: number; text: string; done: boolean };
 
 const columns: { id: TaskStatus; title: string; color: string }[] = [
@@ -56,6 +57,15 @@ const taskTypeLabels: Record<string, string> = {
   planning: "Planejamento",
 };
 
+const recurrenceLabels: Record<string, string> = {
+  none: "Sem recorrência",
+  daily: "Diária",
+  weekly: "Semanal",
+  biweekly: "Quinzenal",
+  monthly: "Mensal",
+  custom: "Personalizada",
+};
+
 type TaskForm = {
   title: string;
   description: string;
@@ -63,6 +73,11 @@ type TaskForm = {
   priority: TaskPriority;
   taskType: string;
   checklist: string;
+  recurrence: TaskRecurrence;
+  recurrenceEvery: string;
+  recurrenceUntil: string;
+  relatedLinks: string;
+  attachmentLinks: string;
   clientId: string;
   collaboratorId: string;
   dueDate: string;
@@ -75,6 +90,11 @@ const emptyForm: TaskForm = {
   priority: "medium",
   taskType: "administrative",
   checklist: "",
+  recurrence: "none",
+  recurrenceEvery: "1",
+  recurrenceUntil: "",
+  relatedLinks: "",
+  attachmentLinks: "",
   clientId: "",
   collaboratorId: "",
   dueDate: "",
@@ -91,6 +111,22 @@ function formatDate(value: number) {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+  }).format(new Date(value));
+}
+
+function inputDate(value?: number | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function formatDateTime(value?: string | number | null) {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
   }).format(new Date(value));
 }
 
@@ -117,6 +153,23 @@ function parseChecklist(value?: string | null): ChecklistItem[] {
   return [];
 }
 
+function parseJsonList(value?: string | null): any[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return value
+      .split("\n")
+      .map(item => item.trim())
+      .filter(Boolean);
+  }
+}
+
+function linesToJson(value: string) {
+  return JSON.stringify(value.split("\n").map(item => item.trim()).filter(Boolean));
+}
+
 export default function TasksPage() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<TaskForm>(emptyForm);
@@ -124,6 +177,8 @@ export default function TasksPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
+  const [commentText, setCommentText] = useState("");
 
   const utils = trpc.useUtils();
   const { data: tasksList = [] } = trpc.tasks.list.useQuery();
@@ -152,6 +207,13 @@ export default function TasksPage() {
       utils.dashboard.today.invalidate();
       utils.dashboard.stats.invalidate();
       toast.success("Tarefa removida!");
+    },
+  });
+  const addCommentMut = trpc.tasks.addComment.useMutation({
+    onSuccess: () => {
+      utils.tasks.list.invalidate();
+      setCommentText("");
+      toast.success("Comentário adicionado!");
     },
   });
 
@@ -195,6 +257,11 @@ export default function TasksPage() {
     });
     return map;
   }, [filteredTasks]);
+  const selectedTask = selectedTaskId ? tasksList.find(task => task.id === selectedTaskId) : null;
+  const selectedComments = selectedTask ? parseJsonList(selectedTask.comments) : [];
+  const selectedHistory = selectedTask ? parseJsonList(selectedTask.history) : [];
+  const selectedRelatedLinks = selectedTask ? parseJsonList(selectedTask.relatedLinks) : [];
+  const selectedAttachmentLinks = selectedTask ? parseJsonList(selectedTask.attachmentLinks) : [];
 
   const handleDragStart = useCallback((event: React.DragEvent, taskId: number) => {
     setDraggedId(taskId);
@@ -232,6 +299,11 @@ export default function TasksPage() {
       priority: form.priority,
       taskType: form.taskType as any,
       checklist: JSON.stringify(checklist),
+      recurrence: form.recurrence,
+      recurrenceEvery: parseInt(form.recurrenceEvery) || 1,
+      recurrenceUntil: form.recurrenceUntil ? parseLocalDate(form.recurrenceUntil) : undefined,
+      relatedLinks: linesToJson(form.relatedLinks),
+      attachmentLinks: linesToJson(form.attachmentLinks),
       clientId: form.clientId ? parseInt(form.clientId) : undefined,
       collaboratorId: form.collaboratorId ? parseInt(form.collaboratorId) : undefined,
       dueDate: form.dueDate ? parseLocalDate(form.dueDate) : undefined,
@@ -308,6 +380,9 @@ export default function TasksPage() {
             <div className="space-y-2">
               {tasksByColumn[column.id].map(task => {
                 const checklist = parseChecklist(task.checklist);
+                const comments = parseJsonList(task.comments);
+                const relatedLinks = parseJsonList(task.relatedLinks);
+                const attachmentLinks = parseJsonList(task.attachmentLinks);
                 const doneCount = checklist.filter(item => item.done).length;
                 const progress = checklist.length ? Math.round((doneCount / checklist.length) * 100) : 0;
                 const taskType = task.taskType ?? "administrative";
@@ -332,6 +407,11 @@ export default function TasksPage() {
                             <Badge variant="outline" className="bg-white text-[10px]">
                               {taskTypeLabels[taskType] ?? "Administrativo"}
                             </Badge>
+                            {task.recurrence && task.recurrence !== "none" ? (
+                              <Badge variant="outline" className="bg-white text-[10px]">
+                                <Repeat2 className="h-3 w-3" /> {recurrenceLabels[task.recurrence]}
+                              </Badge>
+                            ) : null}
                             {task.dueDate && (
                               <Badge variant="outline" className="bg-white text-[10px]">
                                 <Calendar className="h-3 w-3" /> {formatDate(task.dueDate)}
@@ -348,6 +428,8 @@ export default function TasksPage() {
                             {task.collaboratorId && collabMap.has(task.collaboratorId) ? (
                               <span className="flex items-center gap-1"><User className="h-3 w-3" />{collabMap.get(task.collaboratorId)}</span>
                             ) : null}
+                            {comments.length > 0 ? <span className="flex items-center gap-1"><MessageSquare className="h-3 w-3" />{comments.length}</span> : null}
+                            {relatedLinks.length + attachmentLinks.length > 0 ? <span className="flex items-center gap-1"><LinkIcon className="h-3 w-3" />{relatedLinks.length + attachmentLinks.length}</span> : null}
                           </div>
 
                           {checklist.length > 0 ? (
@@ -373,7 +455,15 @@ export default function TasksPage() {
                             </div>
                           ) : null}
 
-                          <div className="flex justify-end">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => setSelectedTaskId(task.id)}
+                            >
+                              Detalhes
+                            </Button>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -393,6 +483,173 @@ export default function TasksPage() {
           </div>
         ))}
       </div>
+
+      <Dialog open={!!selectedTask} onOpenChange={openState => !openState && setSelectedTaskId(null)}>
+        <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto">
+          {selectedTask ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>{selectedTask.title}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-5 py-2">
+                <div className="grid gap-3 sm:grid-cols-4">
+                  <div className="space-y-2">
+                    <Label>Status</Label>
+                    <Select value={selectedTask.status} onValueChange={value => updateMut.mutate({ id: selectedTask.id, status: value as TaskStatus })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todo">A Fazer</SelectItem>
+                        <SelectItem value="in_progress">Em Andamento</SelectItem>
+                        <SelectItem value="done">Concluído</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Prioridade</Label>
+                    <Select value={selectedTask.priority} onValueChange={value => updateMut.mutate({ id: selectedTask.id, priority: value as TaskPriority })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Baixa</SelectItem>
+                        <SelectItem value="medium">Média</SelectItem>
+                        <SelectItem value="high">Alta</SelectItem>
+                        <SelectItem value="urgent">Urgente</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Responsável</Label>
+                    <Select
+                      value={selectedTask.collaboratorId ? String(selectedTask.collaboratorId) : "none"}
+                      onValueChange={value => updateMut.mutate({ id: selectedTask.id, collaboratorId: value === "none" ? null : Number(value) })}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sem responsável</SelectItem>
+                        {collabsList.map(collaborator => <SelectItem key={collaborator.id} value={String(collaborator.id)}>{collaborator.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Prazo</Label>
+                    <Input
+                      type="date"
+                      value={inputDate(selectedTask.dueDate)}
+                      onChange={event => updateMut.mutate({ id: selectedTask.id, dueDate: event.target.value ? parseLocalDate(event.target.value) : null })}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="rounded-lg border bg-muted/20 p-3">
+                    <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                      <Repeat2 className="h-4 w-4 text-primary" />
+                      Recorrência
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {recurrenceLabels[selectedTask.recurrence ?? "none"] ?? "Sem recorrência"}
+                      {selectedTask.recurrence && selectedTask.recurrence !== "none" ? ` · a cada ${selectedTask.recurrenceEvery ?? 1}` : ""}
+                      {selectedTask.recurrenceUntil ? ` · até ${formatDate(selectedTask.recurrenceUntil)}` : ""}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/20 p-3">
+                    <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                      <MessageSquare className="h-4 w-4 text-primary" />
+                      Comentários
+                    </div>
+                    <p className="text-sm text-muted-foreground">{selectedComments.length} comentário(s) interno(s)</p>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                      <MessageSquare className="h-4 w-4 text-primary" />
+                      Comentários internos
+                    </div>
+                    <div className="space-y-2">
+                      {selectedComments.length === 0 ? (
+                        <p className="rounded-lg border border-dashed bg-muted/20 p-4 text-center text-xs text-muted-foreground">Nenhum comentário registrado.</p>
+                      ) : (
+                        selectedComments.slice().reverse().map((comment: any) => (
+                          <div key={comment.id} className="rounded-lg border bg-white p-3">
+                            <p className="text-sm">{comment.text}</p>
+                            <p className="mt-2 text-[11px] text-muted-foreground">{comment.author} · {formatDateTime(comment.createdAt)}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <Textarea
+                      value={commentText}
+                      onChange={event => setCommentText(event.target.value)}
+                      rows={3}
+                      placeholder="Adicionar comentário interno"
+                    />
+                    <Button
+                      size="sm"
+                      disabled={!commentText.trim() || addCommentMut.isPending}
+                      onClick={() => addCommentMut.mutate({ id: selectedTask.id, text: commentText.trim() })}
+                    >
+                      Adicionar comentário
+                    </Button>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                        <History className="h-4 w-4 text-primary" />
+                        Histórico
+                      </div>
+                      <div className="space-y-2">
+                        {selectedHistory.length === 0 ? (
+                          <p className="rounded-lg border border-dashed bg-muted/20 p-4 text-center text-xs text-muted-foreground">Nenhuma alteração registrada.</p>
+                        ) : (
+                          selectedHistory.slice().reverse().slice(0, 8).map((entry: any) => (
+                            <div key={entry.id} className="rounded-lg border bg-white p-3">
+                              <p className="text-sm font-medium">{entry.action}</p>
+                              <p className="text-[11px] text-muted-foreground">{formatDateTime(entry.createdAt)}</p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                        <LinkIcon className="h-4 w-4 text-primary" />
+                        Links relacionados
+                      </div>
+                      {selectedRelatedLinks.length === 0 ? <p className="text-xs text-muted-foreground">Nenhum link relacionado.</p> : (
+                        <div className="space-y-1">
+                          {selectedRelatedLinks.map((link: string) => (
+                            <a key={link} href={link} target="_blank" rel="noreferrer" className="block truncate rounded-md border bg-white px-3 py-2 text-xs text-primary hover:underline">{link}</a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                        <Paperclip className="h-4 w-4 text-primary" />
+                        Arquivos e anexos
+                      </div>
+                      {selectedAttachmentLinks.length === 0 ? <p className="text-xs text-muted-foreground">Nenhum anexo por link.</p> : (
+                        <div className="space-y-1">
+                          {selectedAttachmentLinks.map((link: string) => (
+                            <a key={link} href={link} target="_blank" rel="noreferrer" className="block truncate rounded-md border bg-white px-3 py-2 text-xs text-primary hover:underline">{link}</a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setSelectedTaskId(null)}>Fechar</Button>
+              </DialogFooter>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg">
@@ -466,6 +723,32 @@ export default function TasksPage() {
               <Label>Prazo</Label>
               <Input type="date" value={form.dueDate} onChange={event => setForm(current => ({ ...current, dueDate: event.target.value }))} />
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Recorrência</Label>
+                <Select value={form.recurrence} onValueChange={value => setForm(current => ({ ...current, recurrence: value as TaskRecurrence }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sem recorrência</SelectItem>
+                    <SelectItem value="daily">Diária</SelectItem>
+                    <SelectItem value="weekly">Semanal</SelectItem>
+                    <SelectItem value="biweekly">Quinzenal</SelectItem>
+                    <SelectItem value="monthly">Mensal</SelectItem>
+                    <SelectItem value="custom">Personalizada</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Repetir a cada</Label>
+                <Input type="number" min="1" value={form.recurrenceEvery} onChange={event => setForm(current => ({ ...current, recurrenceEvery: event.target.value }))} />
+              </div>
+            </div>
+            {form.recurrence !== "none" ? (
+              <div className="space-y-2">
+                <Label>Repetir até</Label>
+                <Input type="date" value={form.recurrenceUntil} onChange={event => setForm(current => ({ ...current, recurrenceUntil: event.target.value }))} />
+              </div>
+            ) : null}
             <div className="space-y-2">
               <Label>Checklist</Label>
               <Textarea
@@ -473,6 +756,24 @@ export default function TasksPage() {
                 onChange={event => setForm(current => ({ ...current, checklist: event.target.value }))}
                 rows={4}
                 placeholder="Um item por linha"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Links relacionados</Label>
+              <Textarea
+                value={form.relatedLinks}
+                onChange={event => setForm(current => ({ ...current, relatedLinks: event.target.value }))}
+                rows={2}
+                placeholder="Um link por linha"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Anexos por link</Label>
+              <Textarea
+                value={form.attachmentLinks}
+                onChange={event => setForm(current => ({ ...current, attachmentLinks: event.target.value }))}
+                rows={2}
+                placeholder="Drive, arquivo, briefing ou referência"
               />
             </div>
           </div>

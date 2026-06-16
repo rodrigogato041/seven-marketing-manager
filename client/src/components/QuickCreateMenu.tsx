@@ -136,6 +136,9 @@ function emptyForm() {
     priority: "medium",
     taskType: "administrative",
     checklist: "",
+    recurrence: "none",
+    recurrenceEvery: "1",
+    recurrenceUntil: "",
     status: "pending",
     role: "",
     type: "fixed",
@@ -272,6 +275,9 @@ export function QuickCreateMenu({ compact = false }: { compact?: boolean }) {
         priority: form.priority as any,
         taskType: form.taskType as any,
         checklist: JSON.stringify(checklist),
+        recurrence: form.recurrence as any,
+        recurrenceEvery: Number(form.recurrenceEvery) || 1,
+        recurrenceUntil: form.recurrenceUntil ? parseLocalDate(form.recurrenceUntil) : undefined,
         clientId: form.clientId ? Number(form.clientId) : undefined,
         collaboratorId: form.collaboratorId ? Number(form.collaboratorId) : undefined,
         dueDate: form.date ? parseLocalDate(form.date) : undefined,
@@ -425,6 +431,20 @@ export function QuickCreateMenu({ compact = false }: { compact?: boolean }) {
                 <ClientSelect clients={clients} value={form.clientId} onChange={value => setForm(f => ({ ...f, clientId: value }))} />
                 <CollaboratorSelect collaborators={collaborators} value={form.collaboratorId} onChange={value => setForm(f => ({ ...f, collaboratorId: value }))} />
                 <Field label="Prazo" type="date" value={form.date} onChange={value => setForm(f => ({ ...f, date: value }))} />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <SelectField label="Recorrência" value={form.recurrence} onChange={value => setForm(f => ({ ...f, recurrence: value }))} items={[
+                    ["none", "Sem recorrência"],
+                    ["daily", "Diária"],
+                    ["weekly", "Semanal"],
+                    ["biweekly", "Quinzenal"],
+                    ["monthly", "Mensal"],
+                    ["custom", "Personalizada"],
+                  ]} />
+                  <Field label="Repetir a cada" type="number" value={form.recurrenceEvery} onChange={value => setForm(f => ({ ...f, recurrenceEvery: value }))} />
+                </div>
+                {form.recurrence !== "none" ? (
+                  <Field label="Repetir até" type="date" value={form.recurrenceUntil} onChange={value => setForm(f => ({ ...f, recurrenceUntil: value }))} />
+                ) : null}
                 <TextareaField label="Checklist" placeholder="Um item por linha" value={form.checklist} onChange={value => setForm(f => ({ ...f, checklist: value }))} />
               </>
             ) : null}
