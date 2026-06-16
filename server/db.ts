@@ -414,6 +414,136 @@ export async function deletePayment(id: number) {
   await remove("payments", id);
 }
 
+type CollectionStatus = "pending" | "sent" | "responded" | "paid" | "overdue" | "negotiated";
+
+const collectionStatusLabels: Record<CollectionStatus, string> = {
+  pending: "Pendente",
+  sent: "Cobrança enviada",
+  responded: "Cliente respondeu",
+  paid: "Pago",
+  overdue: "Atrasado",
+  negotiated: "Negociado",
+};
+
+function defaultCollectionStatus(payment: LocalRecord, referenceDate = nowMs()): CollectionStatus {
+  if (payment.status === "paid") return "paid";
+  if (payment.collectionStatus && collectionStatusLabels[payment.collectionStatus as CollectionStatus]) return payment.collectionStatus as CollectionStatus;
+  return asNumber(payment.dueDate) < referenceDate ? "overdue" : "pending";
+}
+
+function collectionHistoryEntry(action: string, details: Record<string, unknown> = {}, author = "Seven Admin") {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    action,
+    details,
+    author,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function buildCollectionRecord(payment: LocalRecord, client?: LocalRecord, referenceDate = nowMs()) {
+  const amount = money(payment.amount);
+  const daysLate = Math.floor((referenceDate - asNumber(payment.dueDate)) / DAY_MS);
+  const status = defaultCollectionStatus(payment, referenceDate);
+  const history = parseJsonArray(payment.collectionHistory);
+  const notes = parseJsonArray(payment.collectionNotes);
+  return {
+    paymentId: payment.id,
+    clientId: payment.clientId,
+    companyName: client?.companyName ?? "Cliente sem nome",
+    contactName: client?.contactName ?? "",
+    whatsapp: client?.whatsapp ?? client?.phone ?? "",
+    email: client?.email ?? "",
+    description: payment.description ?? "",
+    amount: roundMoney(amount),
+    dueDate: payment.dueDate,
+    paidDate: payment.paidDate ?? null,
+    paymentStatus: payment.status,
+    collectionStatus: status,
+    collectionStatusLabel: collectionStatusLabels[status],
+    daysLate: Math.max(daysLate, 0),
+    priority: daysLate > 7 || amount >= 2000 ? "Alta" : daysLate > 0 ? "Média" : "Normal",
+    lastContactAt: payment.collectionLastContactAt ?? null,
+    nextFollowUpAt: payment.collectionNextFollowUpAt ?? null,
+    history,
+    notes,
+    message: paymentMessage(client?.companyName ?? "sua empresa", amount),
+  };
+}
+
+export async function getCollectionsCenter() {
+  const [payments, clients] = await Promise.all([listPayments(), listClients()]);
+  const clientsById = new Map(clients.map(client => [client.id, client]));
+  const now = nowMs();
+  const collections = payments
+    .filter(payment => payment.status !== "paid" || payment.collectionStatus === "paid")
+    .map(payment => buildCollectionRecord(payment, clientsById.get(payment.clientId), now))
+    .filter(item => item.paymentStatus !== "paid" || item.collectionStatus === "paid")
+    .sort((a, b) => {
+      const priorityOrder: Record<string, number> = { Alta: 0, Média: 1, Normal: 2 };
+      return priorityOrder[a.priority] - priorityOrder[b.priority] || asNumber(a.dueDate) - asNumber(b.dueDate);
+    });
+  const openCollections = collections.filter(item => item.collectionStatus !== "paid");
+  return {
+    summary: {
+      totalOpen: openCollections.length,
+      overdue: openCollections.filter(item => item.collectionStatus === "overdue").length,
+      sent: openCollections.filter(item => item.collectionStatus === "sent").length,
+      responded: openCollections.filter(item => item.collectionStatus === "responded").length,
+      negotiated: openCollections.filter(item => item.collectionStatus === "negotiated").length,
+      totalAmount: roundMoney(openCollections.reduce((sum, item) => sum + item.amount, 0)),
+      overdueAmount: roundMoney(openCollections.filter(item => item.collectionStatus === "overdue").reduce((sum, item) => sum + item.amount, 0)),
+    },
+    collections,
+  };
+}
+
+export async function updateCollectionStatus(paymentId: number, status: CollectionStatus, author = "Seven Admin") {
+  const payment = (await listPayments()).find(item => item.id === paymentId);
+  if (!payment) return null;
+  const history = parseJsonArray(payment.collectionHistory);
+  history.push(collectionHistoryEntry("Status da cobrança alterado", {
+    from: defaultCollectionStatus(payment),
+    to: status,
+  }, author));
+  const updateData: Record<string, any> = {
+    collectionStatus: status,
+    collectionHistory: JSON.stringify(history.slice(-100)),
+  };
+  if (status === "sent") updateData.collectionLastContactAt = nowMs();
+  if (status === "paid") {
+    updateData.status = "paid";
+    updateData.paidDate = nowMs();
+  } else if (payment.status === "paid") {
+    updateData.status = asNumber(payment.dueDate) < nowMs() ? "overdue" : "pending";
+    updateData.paidDate = null;
+  }
+  await update("payments", paymentId, updateData);
+  return { success: true };
+}
+
+export async function addCollectionNote(paymentId: number, note: string, author = "Seven Admin", nextFollowUpAt?: number | null) {
+  const payment = (await listPayments()).find(item => item.id === paymentId);
+  if (!payment) return null;
+  const notes = parseJsonArray(payment.collectionNotes);
+  const history = parseJsonArray(payment.collectionHistory);
+  const entry = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    note,
+    author,
+    createdAt: new Date().toISOString(),
+    nextFollowUpAt: nextFollowUpAt ?? null,
+  };
+  notes.push(entry);
+  history.push(collectionHistoryEntry("Observação de cobrança adicionada", { note, nextFollowUpAt: nextFollowUpAt ?? null }, author));
+  await update("payments", paymentId, {
+    collectionNotes: JSON.stringify(notes.slice(-100)),
+    collectionHistory: JSON.stringify(history.slice(-100)),
+    collectionNextFollowUpAt: nextFollowUpAt ?? payment.collectionNextFollowUpAt ?? null,
+  } as any);
+  return { success: true };
+}
+
 export async function listExpenses() {
   return (await list("expenses")).sort(byDateDesc("date"));
 }

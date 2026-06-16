@@ -103,6 +103,7 @@ export function StrategicFinanceDashboard({
       utils.payments.list.invalidate();
       utils.dashboard.stats.invalidate();
       utils.dashboard.today.invalidate();
+      utils.collections.center.invalidate();
       toast.success("Pagamento marcado como pago!");
     },
     onError: () => toast.error("Erro ao confirmar pagamento"),

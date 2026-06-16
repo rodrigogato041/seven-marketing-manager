@@ -13,6 +13,7 @@ import TasksPage from "./pages/Tasks";
 import CalendarPage from "./pages/CalendarPage";
 import ProductionPage from "./pages/Production";
 import ReportsPage from "./pages/Reports";
+import CollectionsPage from "./pages/Collections";
 import { lazy, Suspense } from "react";
 
 const FinancialPage = lazy(() => import("./pages/Financial"));
@@ -28,6 +29,7 @@ function Router() {
         <Route path="/tarefas" component={TasksPage} />
         <Route path="/producao" component={ProductionPage} />
         <Route path="/calendario" component={CalendarPage} />
+        <Route path="/cobrancas" component={CollectionsPage} />
         <Route path="/relatorios" component={ReportsPage} />
         <Route path="/financeiro">
           {() => (

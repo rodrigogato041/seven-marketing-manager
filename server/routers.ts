@@ -17,6 +17,7 @@ import { googleCalendarRouter } from "./googleCalendarRouter";
 
 const taskPrioritySchema = z.enum(["low", "medium", "high", "urgent"]);
 const taskRecurrenceSchema = z.enum(["none", "daily", "weekly", "biweekly", "monthly", "custom"]);
+const collectionStatusSchema = z.enum(["pending", "sent", "responded", "paid", "overdue", "negotiated"]);
 const taskTypeSchema = z.enum([
   "art",
   "video",
@@ -257,6 +258,19 @@ const paymentRouter = router({
 });
 
 // ─── Expense Router ───
+const collectionsRouter = router({
+  center: protectedProcedure.query(() => db.getCollectionsCenter()),
+  updateStatus: protectedProcedure.input(z.object({
+    paymentId: z.number(),
+    status: collectionStatusSchema,
+  })).mutation(({ input, ctx }) => db.updateCollectionStatus(input.paymentId, input.status, ctx.user?.name || ctx.user?.email || "Seven Admin")),
+  addNote: protectedProcedure.input(z.object({
+    paymentId: z.number(),
+    note: z.string().min(1),
+    nextFollowUpAt: z.number().optional().nullable(),
+  })).mutation(({ input, ctx }) => db.addCollectionNote(input.paymentId, input.note, ctx.user?.name || ctx.user?.email || "Seven Admin", input.nextFollowUpAt)),
+});
+
 const expenseRouter = router({
   list: protectedProcedure.query(() => db.listExpenses()),
   create: protectedProcedure.input(z.object({
@@ -577,6 +591,7 @@ export const appRouter = router({
   collaborators: collaboratorRouter,
   tasks: taskRouter,
   payments: paymentRouter,
+  collections: collectionsRouter,
   expenses: expenseRouter,
   documents: documentRouter,
   events: eventRouter,

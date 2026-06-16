@@ -270,6 +270,20 @@ describe("reports router", () => {
   });
 });
 
+describe("collections router", () => {
+  it("requires authentication for center", async () => {
+    const ctx = createUnauthContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.collections.center()).rejects.toThrow();
+  });
+
+  it("requires authentication for updateStatus", async () => {
+    const ctx = createUnauthContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.collections.updateStatus({ paymentId: 1, status: "sent" })).rejects.toThrow();
+  });
+});
+
 describe("router structure", () => {
   it("has all expected routers", () => {
     const { ctx } = createAuthContext();
@@ -279,6 +293,7 @@ describe("router structure", () => {
     expect(caller.collaborators).toBeDefined();
     expect(caller.tasks).toBeDefined();
     expect(caller.payments).toBeDefined();
+    expect(caller.collections).toBeDefined();
     expect(caller.expenses).toBeDefined();
     expect(caller.documents).toBeDefined();
     expect(caller.events).toBeDefined();

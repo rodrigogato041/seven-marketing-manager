@@ -33,6 +33,7 @@ import { GlobalSearch } from "@/components/GlobalSearch";
 import { QuickCreateMenu } from "@/components/QuickCreateMenu";
 import {
   Bell,
+  Banknote,
   CalendarDays,
   CheckCheck,
   DollarSign,
@@ -72,6 +73,7 @@ const navigationGroups = [
     items: [
       { icon: CalendarDays, label: "Calendário", path: "/calendario" },
       { icon: DollarSign, label: "Financeiro", path: "/financeiro" },
+      { icon: Banknote, label: "Cobranças", path: "/cobrancas" },
       { icon: FileBarChart2, label: "Relatórios", path: "/relatorios" },
     ],
   },
