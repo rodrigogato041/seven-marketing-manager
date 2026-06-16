@@ -36,6 +36,7 @@ import {
   CalendarDays,
   CheckCheck,
   DollarSign,
+  FileBarChart2,
   Film,
   KanbanSquare,
   LayoutDashboard,
@@ -71,6 +72,7 @@ const navigationGroups = [
     items: [
       { icon: CalendarDays, label: "Calendário", path: "/calendario" },
       { icon: DollarSign, label: "Financeiro", path: "/financeiro" },
+      { icon: FileBarChart2, label: "Relatórios", path: "/relatorios" },
     ],
   },
 ];

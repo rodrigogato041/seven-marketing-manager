@@ -262,6 +262,14 @@ describe("dashboard extended", () => {
   });
 });
 
+describe("reports router", () => {
+  it("requires authentication for center", async () => {
+    const ctx = createUnauthContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.reports.center({ year: 2026, month: 6 })).rejects.toThrow();
+  });
+});
+
 describe("router structure", () => {
   it("has all expected routers", () => {
     const { ctx } = createAuthContext();
@@ -276,6 +284,7 @@ describe("router structure", () => {
     expect(caller.events).toBeDefined();
     expect(caller.notifications).toBeDefined();
     expect(caller.dashboard).toBeDefined();
+    expect(caller.reports).toBeDefined();
     expect(caller.system).toBeDefined();
   });
 });

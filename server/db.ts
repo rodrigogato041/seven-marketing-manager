@@ -477,6 +477,41 @@ function recommendation(severity: string, title: string, description: string, hr
   return { severity, title, description, href, action };
 }
 
+function percentChange(current: number, previous: number) {
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return roundMoney(((current - previous) / previous) * 100);
+}
+
+function sumPaymentsInRange(payments: LocalRecord[], start: number, end: number, mode: "predicted" | "received") {
+  return payments
+    .filter(payment => {
+      const field = mode === "received" ? payment.paidDate ?? payment.dueDate : payment.dueDate;
+      return asNumber(field) >= start && asNumber(field) <= end && (mode === "predicted" || payment.status === "paid");
+    })
+    .reduce((sum, payment) => sum + money(payment.amount), 0);
+}
+
+function sumExpensesInRange(expenses: LocalRecord[], start: number, end: number) {
+  return expenses
+    .filter(expense => asNumber(expense.date) >= start && asNumber(expense.date) <= end)
+    .reduce((sum, expense) => sum + money(expense.amount), 0);
+}
+
+function periodLabel(year: number, month: number) {
+  return new Date(year, month - 1).toLocaleString("pt-BR", { month: "long", year: "numeric" });
+}
+
+function buildComparison(label: string, current: number, previous: number) {
+  return {
+    label,
+    current: roundMoney(current),
+    previous: roundMoney(previous),
+    difference: roundMoney(current - previous),
+    changePercent: percentChange(current, previous),
+    trend: current > previous ? "up" : current < previous ? "down" : "stable",
+  };
+}
+
 export async function getExecutiveDashboard() {
   const today = new Date();
   const year = today.getFullYear();
@@ -645,6 +680,231 @@ export async function getExecutiveDashboard() {
       })),
     ].slice(0, 6),
     recommendations: recommendations.slice(0, 5),
+  };
+}
+
+export async function getReportsCenter(year: number, month: number) {
+  const { start, end } = getMonthRange(year, month);
+  const previousDate = new Date(year, month - 2, 1);
+  const previousRange = getMonthRange(previousDate.getFullYear(), previousDate.getMonth() + 1);
+  const quarterStartMonth = Math.floor((month - 1) / 3) * 3 + 1;
+  const quarterStart = new Date(year, quarterStartMonth - 1, 1).getTime();
+  const quarterEnd = new Date(year, quarterStartMonth + 2, 0, 23, 59, 59, 999).getTime();
+  const previousQuarterEndDate = new Date(year, quarterStartMonth - 1, 0, 23, 59, 59, 999);
+  const previousQuarterStartDate = new Date(previousQuarterEndDate.getFullYear(), previousQuarterEndDate.getMonth() - 2, 1);
+  const yearStart = new Date(year, 0, 1).getTime();
+  const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999).getTime();
+  const previousYearStart = new Date(year - 1, 0, 1).getTime();
+  const previousYearEnd = new Date(year - 1, 11, 31, 23, 59, 59, 999).getTime();
+
+  const [clients, payments, expenses, tasks, collaborators, production, finance, contentSummary] = await Promise.all([
+    listClients(),
+    listPayments(),
+    listExpenses(),
+    listTasks(),
+    listCollaborators(),
+    list("productionTracking"),
+    getStrategicFinance(year, month),
+    getContentStudioSummary(year, month),
+  ]);
+
+  const activeClients = clients.filter(client => client.status === "active");
+  const clientsById = new Map(clients.map(client => [client.id, client]));
+  const collaboratorsById = new Map(collaborators.map(collaborator => [collaborator.id, collaborator]));
+  const monthPayments = payments.filter(payment => isInRange(payment.dueDate, start, end) || isInRange(payment.paidDate, start, end));
+  const monthExpenses = expenses.filter(expense => isInRange(expense.date, start, end));
+  const monthTasks = tasks.filter(task => {
+    const created = asNumber(new Date(task.createdAt).getTime());
+    const due = asNumber(task.dueDate);
+    const updated = asNumber(new Date(task.updatedAt).getTime());
+    return isInRange(created, start, end) || isInRange(due, start, end) || isInRange(updated, start, end);
+  });
+  const monthProduction = production.filter(item => item.year === year && item.month === month);
+  const receivedRevenue = monthPayments.filter(payment => payment.status === "paid").reduce((sum, payment) => sum + money(payment.amount), 0);
+  const predictedRevenue = activeClients.reduce((sum, client) => sum + money(client.monthlyValue), 0);
+  const pendingPayments = payments
+    .filter(payment => payment.status !== "paid")
+    .map(payment => ({
+      id: payment.id,
+      clientId: payment.clientId,
+      companyName: clientsById.get(payment.clientId)?.companyName ?? "Cliente sem nome",
+      description: payment.description ?? "",
+      amount: roundMoney(money(payment.amount)),
+      dueDate: payment.dueDate,
+      status: asNumber(payment.dueDate) < nowMs() ? "overdue" : payment.status,
+    }))
+    .sort((a, b) => asNumber(a.dueDate) - asNumber(b.dueDate));
+
+  const revenueByClient = activeClients
+    .map(client => {
+      const clientPayments = monthPayments.filter(payment => payment.clientId === client.id);
+      const received = clientPayments.filter(payment => payment.status === "paid").reduce((sum, payment) => sum + money(payment.amount), 0);
+      const predicted = money(client.monthlyValue);
+      return {
+        clientId: client.id,
+        companyName: client.companyName,
+        predicted: roundMoney(predicted),
+        received: roundMoney(received),
+        pending: roundMoney(Math.max(predicted - received, 0)),
+      };
+    })
+    .sort((a, b) => b.predicted - a.predicted);
+
+  const expensesByCategoryMap: Record<string, { category: string; total: number; count: number }> = {};
+  for (const expense of monthExpenses) {
+    const category = expense.category || "Sem categoria";
+    expensesByCategoryMap[category] ??= { category, total: 0, count: 0 };
+    expensesByCategoryMap[category].total += money(expense.amount);
+    expensesByCategoryMap[category].count += 1;
+  }
+  const expensesByCategory = Object.values(expensesByCategoryMap)
+    .map(item => ({
+      category: item.category,
+      count: item.count,
+      total: roundMoney(item.total),
+      percentage: monthExpenses.length > 0 ? roundMoney((item.total / Math.max(1, sumExpensesInRange(monthExpenses, start, end))) * 100) : 0,
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  const delinquentClients = revenueByClient
+    .filter(client => pendingPayments.some(payment => payment.clientId === client.clientId && payment.status === "overdue"))
+    .map(client => ({
+      ...client,
+      overdueAmount: roundMoney(pendingPayments.filter(payment => payment.clientId === client.clientId && payment.status === "overdue").reduce((sum, payment) => sum + payment.amount, 0)),
+    }));
+
+  const productionByClient = activeClients
+    .map(client => {
+      const tracking = monthProduction.find(item => item.clientId === client.id);
+      const contractedVideos = asNumber(client.videoQuantity);
+      const contractedImages = asNumber(client.imageQuantity);
+      const deliveredVideos = asNumber(tracking?.videosProduced);
+      const deliveredImages = asNumber(tracking?.imagesProduced);
+      const contracted = contractedVideos + contractedImages;
+      const delivered = deliveredVideos + deliveredImages;
+      return {
+        clientId: client.id,
+        companyName: client.companyName,
+        contractedVideos,
+        deliveredVideos,
+        contractedImages,
+        deliveredImages,
+        contracted,
+        delivered,
+        pending: Math.max(contracted - delivered, 0),
+        completionRate: contracted > 0 ? roundMoney((delivered / contracted) * 100) : 100,
+      };
+    })
+    .sort((a, b) => b.pending - a.pending || a.companyName.localeCompare(b.companyName));
+
+  const tasksByCollaboratorMap: Record<number, { collaboratorId: number; name: string; total: number; completed: number; open: number; overdue: number }> = {};
+  for (const task of monthTasks) {
+    const collaboratorId = task.collaboratorId ?? 0;
+    const name = collaboratorId ? collaboratorsById.get(collaboratorId)?.name ?? "Colaborador" : "Sem responsavel";
+    tasksByCollaboratorMap[collaboratorId] ??= { collaboratorId, name, total: 0, completed: 0, open: 0, overdue: 0 };
+    tasksByCollaboratorMap[collaboratorId].total += 1;
+    if (task.status === "done") tasksByCollaboratorMap[collaboratorId].completed += 1;
+    else tasksByCollaboratorMap[collaboratorId].open += 1;
+    if (task.status !== "done" && task.dueDate && asNumber(task.dueDate) < nowMs()) tasksByCollaboratorMap[collaboratorId].overdue += 1;
+  }
+  const tasksByCollaborator = Object.values(tasksByCollaboratorMap)
+    .sort((a, b) => b.open - a.open || b.total - a.total);
+
+  const clientMonthlyReports = activeClients.map(client => ({
+    clientId: client.id,
+    companyName: client.companyName,
+    services: serviceListForClient(client),
+    monthlyValue: roundMoney(money(client.monthlyValue)),
+    production: productionByClient.find(item => item.clientId === client.id),
+    revenue: revenueByClient.find(item => item.clientId === client.id),
+    tasks: {
+      total: monthTasks.filter(task => task.clientId === client.id).length,
+      completed: monthTasks.filter(task => task.clientId === client.id && task.status === "done").length,
+      open: monthTasks.filter(task => task.clientId === client.id && task.status !== "done").length,
+    },
+  }));
+
+  const actualExpenses = sumExpensesInRange(expenses, start, end);
+  const plannedExpenses = money(finance.dre.fixedCosts) + money(finance.dre.variableCosts) + money(finance.dre.personalExpenses) + money(finance.dre.collaboratorCosts);
+  const currentMonthRevenue = sumPaymentsInRange(payments, start, end, "received");
+  const previousMonthRevenue = sumPaymentsInRange(payments, previousRange.start, previousRange.end, "received");
+  const quarterRevenue = sumPaymentsInRange(payments, quarterStart, quarterEnd, "received");
+  const previousQuarterRevenue = sumPaymentsInRange(payments, previousQuarterStartDate.getTime(), previousQuarterEndDate.getTime(), "received");
+  const currentYearRevenue = sumPaymentsInRange(payments, yearStart, yearEnd, "received");
+  const previousYearRevenue = sumPaymentsInRange(payments, previousYearStart, previousYearEnd, "received");
+  const totalContractedProduction = productionByClient.reduce((sum, item) => sum + item.contracted, 0);
+  const totalDeliveredProduction = productionByClient.reduce((sum, item) => sum + item.delivered, 0);
+
+  return {
+    period: {
+      year,
+      month,
+      label: periodLabel(year, month),
+      startDate: start,
+      endDate: end,
+    },
+    summary: {
+      predictedRevenue: roundMoney(predictedRevenue),
+      receivedRevenue: roundMoney(receivedRevenue),
+      pendingRevenue: roundMoney(Math.max(predictedRevenue - receivedRevenue, 0)),
+      expenses: roundMoney(actualExpenses),
+      netProfit: roundMoney(receivedRevenue - actualExpenses),
+      netMargin: receivedRevenue > 0 ? roundMoney(((receivedRevenue - actualExpenses) / receivedRevenue) * 100) : 0,
+      activeClients: activeClients.length,
+      delinquentClients: delinquentClients.length,
+      pendingPayments: pendingPayments.length,
+      productionPending: productionByClient.filter(item => item.pending > 0).length,
+      tasksOpen: tasksByCollaborator.reduce((sum, item) => sum + item.open, 0),
+      contentAwaitingApproval: contentSummary.summary.awaitingApproval,
+    },
+    reports: {
+      financialMonthly: {
+        dre: finance.dre,
+        cashflow: finance.cashflow,
+        riskAlerts: finance.riskAlerts,
+      },
+      expensesByCategory,
+      revenueByClient,
+      pendingPayments,
+      activeClients: activeClients.map(client => ({
+        id: client.id,
+        companyName: client.companyName,
+        contactName: client.contactName,
+        monthlyValue: roundMoney(money(client.monthlyValue)),
+        services: serviceListForClient(client),
+      })),
+      delinquentClients,
+      productionByClient,
+      tasksByCollaborator,
+      clientMonthlyReports,
+      projectedCashflow: finance.cashflow,
+    },
+    comparisons: {
+      currentVsPreviousMonth: buildComparison("Mes atual x mes anterior", currentMonthRevenue, previousMonthRevenue),
+      currentVsPreviousQuarter: buildComparison("Trimestre atual x trimestre anterior", quarterRevenue, previousQuarterRevenue),
+      currentVsPreviousYear: buildComparison("Ano atual x ano anterior", currentYearRevenue, previousYearRevenue),
+      predictedVsReceived: {
+        label: "Receita prevista x recebida",
+        predicted: roundMoney(predictedRevenue),
+        received: roundMoney(receivedRevenue),
+        gap: roundMoney(predictedRevenue - receivedRevenue),
+        completionPercent: predictedRevenue > 0 ? roundMoney((receivedRevenue / predictedRevenue) * 100) : 0,
+      },
+      plannedVsActualExpenses: {
+        label: "Despesa planejada x real",
+        planned: roundMoney(plannedExpenses),
+        actual: roundMoney(actualExpenses),
+        difference: roundMoney(plannedExpenses - actualExpenses),
+        usagePercent: plannedExpenses > 0 ? roundMoney((actualExpenses / plannedExpenses) * 100) : 0,
+      },
+      contractedVsDeliveredProduction: {
+        label: "Producao contratada x entregue",
+        contracted: totalContractedProduction,
+        delivered: totalDeliveredProduction,
+        pending: Math.max(totalContractedProduction - totalDeliveredProduction, 0),
+        completionPercent: totalContractedProduction > 0 ? roundMoney((totalDeliveredProduction / totalContractedProduction) * 100) : 100,
+      },
+    },
   };
 }
 
