@@ -462,6 +462,192 @@ export async function getDashboardStats() {
   };
 }
 
+function clampScore(value: number) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function companyHealthStatus(score: number) {
+  if (score <= 39) return { key: "critical", label: "Crítico", tone: "critical" };
+  if (score <= 59) return { key: "attention", label: "Atenção", tone: "warning" };
+  if (score <= 79) return { key: "healthy", label: "Saudável", tone: "good" };
+  return { key: "excellent", label: "Excelente", tone: "excellent" };
+}
+
+function recommendation(severity: string, title: string, description: string, href: string, action: string) {
+  return { severity, title, description, href, action };
+}
+
+export async function getExecutiveDashboard() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth() + 1;
+  const previousMonthDate = new Date(year, month - 2, 1);
+  const [finance, commandCenter, clientIntelligence, contentSummary, previousForecast] = await Promise.all([
+    getStrategicFinance(year, month),
+    getTodayCommandCenter(),
+    getClientIntelligence(),
+    getContentStudioSummary(year, month),
+    getMonthlyBillingForecast(previousMonthDate.getFullYear(), previousMonthDate.getMonth() + 1),
+  ]);
+
+  const grossRevenue = money(finance.dre.grossRevenue);
+  const receivedRevenue = money(finance.dre.receivedRevenue);
+  const pendingRevenue = money(finance.dre.pendingRevenue);
+  const netProfit = money(finance.dre.netProfit);
+  const netMargin = money(finance.dre.netMargin);
+  const fixedCostRate = grossRevenue > 0 ? money(finance.dre.fixedCosts) / grossRevenue : 0;
+  const pendingRate = grossRevenue > 0 ? pendingRevenue / grossRevenue : 0;
+  const previousRevenue = money(previousForecast.predicted);
+  const revenueGrowth = previousRevenue > 0 ? roundMoney(((grossRevenue - previousRevenue) / previousRevenue) * 100) : grossRevenue > 0 ? 100 : 0;
+  const cashWindows = finance.cashflow ?? [];
+  const hasNegativeCashWindow = cashWindows.some((item: any) => money(item.projectedBalance) < 0);
+  const worstCashWindow = [...cashWindows].sort((a: any, b: any) => money(a.projectedBalance) - money(b.projectedBalance))[0] ?? null;
+  const riskClients = clientIntelligence.summary.risk + clientIntelligence.summary.delinquent;
+  const contentPending = contentSummary.summary.awaitingApproval + contentSummary.summary.overdue;
+
+  const financeScore = clampScore(
+    100
+    - (netProfit < 0 ? 30 : netMargin < 15 ? 18 : netMargin < 25 ? 8 : 0)
+    - (pendingRate > 0.5 ? 20 : pendingRate > 0.35 ? 12 : pendingRate > 0.2 ? 6 : 0)
+    - (fixedCostRate > 0.65 ? 18 : fixedCostRate > 0.5 ? 10 : 0)
+    - (finance.concentration.topTwoShare >= 60 ? 8 : 0)
+  );
+  const clientScore = clampScore(
+    clientIntelligence.summary.averageScore
+    - Math.min(18, riskClients * 5)
+    - Math.min(12, clientIntelligence.summary.contractAlerts * 2)
+  );
+  const operationScore = clampScore(
+    100
+    - Math.min(30, commandCenter.counts.overdueTasks * 6)
+    - Math.min(22, commandCenter.counts.productionPending * 4)
+    - Math.min(12, contentPending * 2)
+  );
+  const cashScore = clampScore(
+    100
+    - (hasNegativeCashWindow ? 35 : 0)
+    - (pendingRate > 0.35 ? 15 : pendingRate > 0.2 ? 8 : 0)
+    - (finance.dre.finalBalance < 0 ? 20 : finance.dre.finalBalance < grossRevenue * 0.1 ? 8 : 0)
+  );
+  const growthScore = clampScore(revenueGrowth < -10 ? 45 : revenueGrowth < 0 ? 65 : revenueGrowth < 8 ? 78 : 90);
+  const score = clampScore(
+    financeScore * 0.35
+    + clientScore * 0.25
+    + operationScore * 0.2
+    + cashScore * 0.1
+    + growthScore * 0.1
+  );
+  const status = companyHealthStatus(score);
+
+  const recommendations = [
+    commandCenter.counts.overduePayments > 0 ? recommendation(
+      "critical",
+      "Priorizar cobranças atrasadas",
+      `${commandCenter.counts.overduePayments} pagamento(s) estão vencidos e afetam o caixa do mês.`,
+      "/financeiro",
+      "Ver financeiro"
+    ) : null,
+    commandCenter.counts.overdueTasks > 0 ? recommendation(
+      "high",
+      "Destravar tarefas atrasadas",
+      `${commandCenter.counts.overdueTasks} tarefa(s) atrasada(s) podem comprometer entrega e retenção.`,
+      "/tarefas",
+      "Abrir tarefas"
+    ) : null,
+    commandCenter.counts.productionPending > 0 ? recommendation(
+      "medium",
+      "Revisar produção pendente",
+      `${commandCenter.counts.productionPending} cliente(s) têm produção do mês ainda em aberto.`,
+      "/producao",
+      "Ver produção"
+    ) : null,
+    riskClients > 0 ? recommendation(
+      "high",
+      "Cuidar de clientes em risco",
+      `${riskClients} cliente(s) aparecem em risco ou inadimplência no radar de relacionamento.`,
+      "/clientes",
+      "Ver clientes"
+    ) : null,
+    clientIntelligence.summary.contractAlerts > 0 ? recommendation(
+      "medium",
+      "Atualizar contratos",
+      `${clientIntelligence.summary.contractAlerts} contrato(s) precisam de conferência ou renovação.`,
+      "/clientes",
+      "Ver contratos"
+    ) : null,
+    hasNegativeCashWindow ? recommendation(
+      "critical",
+      "Proteger o caixa projetado",
+      `A janela ${worstCashWindow?.label ?? "projetada"} indica saldo negativo se nada mudar.`,
+      "/financeiro",
+      "Ver fluxo"
+    ) : null,
+    finance.concentration.topTwoShare >= 60 ? recommendation(
+      "medium",
+      "Reduzir concentração de receita",
+      `Os dois maiores clientes concentram ${finance.concentration.topTwoShare}% da receita prevista.`,
+      "/clientes",
+      "Analisar carteira"
+    ) : null,
+  ].filter(Boolean);
+
+  const primaryInsight = score >= 80
+    ? "A empresa está saudável. O foco agora é manter cadência de entrega, proteger margem e buscar crescimento controlado."
+    : score >= 60
+      ? "A empresa está em boa condição, mas existem pontos que merecem ação antes que virem gargalo."
+      : score >= 40
+        ? "A operação exige atenção. O melhor movimento é reduzir pendências, controlar custos e priorizar caixa."
+        : "A empresa está em zona crítica. A prioridade deve ser caixa, cobrança, tarefas atrasadas e revisão imediata de custos.";
+
+  return {
+    period: { year, month },
+    health: {
+      score,
+      status,
+      insight: primaryInsight,
+      components: [
+        { key: "finance", label: "Financeiro", score: financeScore },
+        { key: "clients", label: "Clientes", score: clientScore },
+        { key: "operations", label: "Operação", score: operationScore },
+        { key: "cash", label: "Caixa", score: cashScore },
+        { key: "growth", label: "Crescimento", score: growthScore },
+      ],
+    },
+    metrics: {
+      grossRevenue: roundMoney(grossRevenue),
+      receivedRevenue: roundMoney(receivedRevenue),
+      pendingRevenue: roundMoney(pendingRevenue),
+      expenses: roundMoney(money(finance.dre.operationalExpenses) + money(finance.dre.personalExpenses) + money(finance.dre.investments) + money(finance.dre.creditCardPending)),
+      netProfit: roundMoney(netProfit),
+      netMargin: roundMoney(netMargin),
+      activeClients: clientIntelligence.summary.activeClients,
+      clientsAtRisk: riskClients,
+      pendingTasks: commandCenter.counts.tasksDueToday + commandCenter.counts.overdueTasks,
+      overdueTasks: commandCenter.counts.overdueTasks,
+      pendingProduction: commandCenter.counts.productionPending,
+      paymentsDueSoon: commandCenter.counts.paymentsDueToday + commandCenter.counts.paymentsDueSoon,
+      overduePayments: commandCenter.counts.overduePayments,
+      contentPending,
+      revenueGrowth,
+      topTwoRevenueShare: finance.concentration.topTwoShare,
+      projectedCash30Days: cashWindows.find((item: any) => item.days === 30)?.projectedBalance ?? null,
+    },
+    alerts: [
+      ...finance.riskAlerts.slice(0, 4).map((alert: any) => ({
+        level: alert.level,
+        title: alert.title,
+        description: alert.description,
+      })),
+      ...commandCenter.criticalAlerts.filter(Boolean).slice(0, 3).map((alert) => ({
+        level: "high",
+        title: "Alerta operacional",
+        description: alert,
+      })),
+    ].slice(0, 6),
+    recommendations: recommendations.slice(0, 5),
+  };
+}
+
 function monthlyTotals(rows: LocalRecord[], field: string) {
   const totals = new Map<string, number>();
   for (const row of rows) {

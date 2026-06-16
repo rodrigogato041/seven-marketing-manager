@@ -358,6 +358,7 @@ const notificationRouter = router({
 const dashboardRouter = router({
   stats: protectedProcedure.query(() => db.getDashboardStats()),
   today: protectedProcedure.query(() => db.getTodayCommandCenter()),
+  executive: protectedProcedure.query(() => db.getExecutiveDashboard()),
   globalSearch: protectedProcedure.input(z.object({ query: z.string().min(1) })).query(({ input }) => db.globalSearch(input.query)),
   monthlyRevenue: protectedProcedure.query(() => db.getMonthlyRevenue()),
   monthlyExpenses: protectedProcedure.query(() => db.getMonthlyExpenses()),

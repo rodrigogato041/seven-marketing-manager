@@ -185,6 +185,12 @@ describe("dashboard router", () => {
     await expect(caller.dashboard.stats()).rejects.toThrow();
   });
 
+  it("requires authentication for executive", async () => {
+    const ctx = createUnauthContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.dashboard.executive()).rejects.toThrow();
+  });
+
   it("requires authentication for monthlyRevenue", async () => {
     const ctx = createUnauthContext();
     const caller = appRouter.createCaller(ctx);

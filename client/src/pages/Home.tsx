@@ -11,6 +11,7 @@ import {
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip } from "recharts";
 import PremiumLineChart from "@/components/PremiumLineChart";
 import { TodayCommandCenter } from "@/components/TodayCommandCenter";
+import { ExecutiveDashboardPanel } from "@/components/ExecutiveDashboardPanel";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -210,6 +211,8 @@ export default function Home() {
       </div>
 
       <TodayCommandCenter />
+
+      <ExecutiveDashboardPanel />
 
       {/* KPI Cards */}
       <div className="grid w-full min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
