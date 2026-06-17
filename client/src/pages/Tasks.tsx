@@ -12,7 +12,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, GripVertical, Calendar, User, Building2, ListChecks, Search, Repeat2, MessageSquare, History, Link as LinkIcon, Paperclip } from "lucide-react";
+import { Plus, GripVertical, Calendar, User, Building2, ListChecks, Search, Repeat2, MessageSquare, History, Link as LinkIcon, Paperclip, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 type TaskStatus = "todo" | "in_progress" | "done";
@@ -179,6 +179,7 @@ export default function TasksPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [commentText, setCommentText] = useState("");
+  const [newChecklistText, setNewChecklistText] = useState("");
 
   const utils = trpc.useUtils();
   const { data: tasksList = [] } = trpc.tasks.list.useQuery();
@@ -190,6 +191,7 @@ export default function TasksPage() {
       utils.tasks.list.invalidate();
       utils.dashboard.today.invalidate();
       utils.dashboard.stats.invalidate();
+      utils.dashboard.executive.invalidate();
       setOpen(false);
       toast.success("Tarefa criada!");
     },
@@ -199,6 +201,7 @@ export default function TasksPage() {
       utils.tasks.list.invalidate();
       utils.dashboard.today.invalidate();
       utils.dashboard.stats.invalidate();
+      utils.dashboard.executive.invalidate();
     },
   });
   const deleteMut = trpc.tasks.delete.useMutation({
@@ -206,6 +209,7 @@ export default function TasksPage() {
       utils.tasks.list.invalidate();
       utils.dashboard.today.invalidate();
       utils.dashboard.stats.invalidate();
+      utils.dashboard.executive.invalidate();
       toast.success("Tarefa removida!");
     },
   });
@@ -258,6 +262,9 @@ export default function TasksPage() {
     return map;
   }, [filteredTasks]);
   const selectedTask = selectedTaskId ? tasksList.find(task => task.id === selectedTaskId) : null;
+  const selectedChecklist = selectedTask ? parseChecklist(selectedTask.checklist) : [];
+  const selectedChecklistDone = selectedChecklist.filter(item => item.done).length;
+  const selectedChecklistProgress = selectedChecklist.length ? Math.round((selectedChecklistDone / selectedChecklist.length) * 100) : 0;
   const selectedComments = selectedTask ? parseJsonList(selectedTask.comments) : [];
   const selectedHistory = selectedTask ? parseJsonList(selectedTask.history) : [];
   const selectedRelatedLinks = selectedTask ? parseJsonList(selectedTask.relatedLinks) : [];
@@ -314,6 +321,30 @@ export default function TasksPage() {
     const checklist = parseChecklist(task.checklist);
     const nextChecklist = checklist.map(item => item.id === itemId ? { ...item, done: !item.done } : item);
     updateMut.mutate({ id: task.id, checklist: JSON.stringify(nextChecklist) });
+  }
+
+  function updateChecklist(task: any, checklist: ChecklistItem[]) {
+    updateMut.mutate({ id: task.id, checklist: JSON.stringify(checklist) });
+  }
+
+  function addChecklistItem() {
+    if (!selectedTask || !newChecklistText.trim()) return;
+    const nextId = selectedChecklist.reduce((max, item) => Math.max(max, item.id), 0) + 1;
+    updateChecklist(selectedTask, [
+      ...selectedChecklist,
+      { id: nextId, text: newChecklistText.trim(), done: false },
+    ]);
+    setNewChecklistText("");
+  }
+
+  function renameChecklistItem(itemId: number, text: string) {
+    if (!selectedTask) return;
+    updateChecklist(selectedTask, selectedChecklist.map(item => item.id === itemId ? { ...item, text } : item));
+  }
+
+  function removeChecklistItem(itemId: number) {
+    if (!selectedTask) return;
+    updateChecklist(selectedTask, selectedChecklist.filter(item => item.id !== itemId));
   }
 
   return (
@@ -557,6 +588,71 @@ export default function TasksPage() {
                       Comentários
                     </div>
                     <p className="text-sm text-muted-foreground">{selectedComments.length} comentário(s) interno(s)</p>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border bg-white p-3">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                      <ListChecks className="h-4 w-4 text-primary" />
+                      Checklist da tarefa
+                    </div>
+                    <Badge variant="secondary" className="bg-muted">
+                      {selectedChecklistDone}/{selectedChecklist.length} concluido(s) - {selectedChecklistProgress}%
+                    </Badge>
+                  </div>
+                  <div className="mb-3 h-2 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all"
+                      style={{ width: `${selectedChecklist.length ? selectedChecklistProgress : 0}%` }}
+                    />
+                  </div>
+                  {selectedChecklist.length === 0 ? (
+                    <p className="rounded-lg border border-dashed bg-muted/20 p-4 text-center text-xs text-muted-foreground">
+                      Nenhum item no checklist. Adicione os passos da entrega abaixo.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {selectedChecklist.map(item => (
+                        <div key={item.id} className="grid gap-2 rounded-md border bg-muted/10 p-2 sm:grid-cols-[auto_1fr_auto] sm:items-center">
+                          <input
+                            type="checkbox"
+                            checked={item.done}
+                            onChange={() => toggleChecklistItem(selectedTask, item.id)}
+                            className="h-4 w-4 rounded border-border"
+                          />
+                          <Input
+                            value={item.text}
+                            onChange={event => renameChecklistItem(item.id, event.target.value)}
+                            className={item.done ? "text-muted-foreground line-through" : ""}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeChecklistItem(item.id)}
+                            aria-label="Remover item do checklist"
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <Input
+                      value={newChecklistText}
+                      onChange={event => setNewChecklistText(event.target.value)}
+                      onKeyDown={event => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          addChecklistItem();
+                        }
+                      }}
+                      placeholder="Novo item do checklist"
+                    />
+                    <Button onClick={addChecklistItem} disabled={!newChecklistText.trim() || updateMut.isPending}>
+                      <Plus className="mr-2 h-4 w-4" /> Adicionar
+                    </Button>
                   </div>
                 </div>
 
