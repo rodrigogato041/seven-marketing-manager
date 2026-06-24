@@ -13,7 +13,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, Target, Zap,
+  Plus, Trash2, TrendingUp, TrendingDown, AlertTriangle, Target, Zap, CheckCircle2, GitCompareArrows,
 } from "lucide-react";
 import { toast } from "sonner";
 import ProjectedCashFlow from "./ProjectedCashFlow";
@@ -37,6 +37,11 @@ type BudgetExpenseItem = {
   amount: number;
   date?: number | null;
   duplicateOf?: string | null;
+  duplicateMatch?: BudgetExpenseItem | null;
+  duplicateReason?: string | null;
+  duplicateConfidence?: number | null;
+  duplicateAmountDiff?: number | null;
+  duplicateTextSimilarity?: number | null;
 };
 
 function formatBudgetDate(date?: number | null) {
@@ -91,6 +96,127 @@ function ImportedExpenseList({
               <p className={`shrink-0 font-bold ${amountClass}`}>{financialValue(formatCurrency(item.amount))}</p>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function sourceLabel(source: string) {
+  if (source === "planned") return "Planejamento";
+  if (source === "actual") return "Aba Despesas";
+  if (source === "collaborator") return "Colaboradores";
+  return source;
+}
+
+function costTypeLabel(type: BudgetExpenseType) {
+  if (type === "fixed") return "Custo fixo";
+  if (type === "variable") return "Custo variavel";
+  if (type === "personal") return "Despesa pessoal";
+  return "Colaborador";
+}
+
+function DeduplicationAudit({
+  acceptedItems,
+  duplicatedItems,
+  financialValue,
+}: {
+  acceptedItems: BudgetExpenseItem[];
+  duplicatedItems: BudgetExpenseItem[];
+  financialValue: (value: string) => string;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="border-emerald-200 bg-emerald-50/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <CheckCircle2 className="h-4 w-4 text-emerald-700" />
+              Contabilizadas
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-emerald-700">{acceptedItems.length}</p>
+            <p className="text-xs text-muted-foreground">Despesas reais integradas ao planejamento</p>
+          </CardContent>
+        </Card>
+        <Card className="border-amber-200 bg-amber-50/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <GitCompareArrows className="h-4 w-4 text-amber-700" />
+              Ignoradas
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-amber-700">{duplicatedItems.length}</p>
+            <p className="text-xs text-muted-foreground">Itens parecidos que nao somaram duas vezes</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Criterio</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">Compara valor, descricao, categoria e termos equivalentes.</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {duplicatedItems.length === 0 ? (
+        <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+          Nenhuma duplicidade encontrada neste mes.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {duplicatedItems.map(item => {
+            const match = item.duplicateMatch;
+            return (
+              <Card key={`${item.source}-${item.id}-${item.duplicateOf}`} className="border-amber-200">
+                <CardContent className="p-4">
+                  <div className="grid gap-4 lg:grid-cols-[1fr_auto_1fr]">
+                    <div className="rounded-md border border-amber-200 bg-amber-50/60 p-3">
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <Badge variant="outline">Ignorada</Badge>
+                        <Badge variant="secondary">{costTypeLabel(item.type)}</Badge>
+                      </div>
+                      <p className="font-semibold">{item.description}</p>
+                      <p className="text-xs text-muted-foreground">{item.category} - {formatBudgetDate(item.date)}</p>
+                      <p className="mt-2 font-bold text-amber-700">{financialValue(formatCurrency(item.amount))}</p>
+                    </div>
+
+                    <div className="flex items-center justify-center">
+                      <GitCompareArrows className="h-5 w-5 text-muted-foreground" />
+                    </div>
+
+                    <div className="rounded-md border border-emerald-200 bg-emerald-50/60 p-3">
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <Badge variant="outline">Mantida</Badge>
+                        <Badge variant="secondary">{sourceLabel(match?.source ?? "")}</Badge>
+                      </div>
+                      <p className="font-semibold">{match?.description ?? item.duplicateOf ?? "Item original"}</p>
+                      <p className="text-xs text-muted-foreground">{match?.category ?? "Sem categoria"}</p>
+                      <p className="mt-2 font-bold text-emerald-700">{financialValue(formatCurrency(match?.amount ?? 0))}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid gap-2 rounded-md bg-muted/40 p-3 text-sm md:grid-cols-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Motivo</p>
+                      <p className="font-medium">{item.duplicateReason ?? "Valor e descricao parecidos"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Confianca</p>
+                      <p className="font-medium">{item.duplicateConfidence ?? 0}%</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Diferenca de valor</p>
+                      <p className="font-medium">{financialValue(formatCurrency(item.duplicateAmountDiff ?? 0))}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>
@@ -389,10 +515,11 @@ export default function BudgetPlanningDashboard({ year, month, financialValue = 
 
       {/* Tabs for Details */}
       <Tabs defaultValue="fixed" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="fixed">Custos Fixos</TabsTrigger>
           <TabsTrigger value="variable">Custos Variáveis</TabsTrigger>
           <TabsTrigger value="personal">Despesas Pessoais</TabsTrigger>
+          <TabsTrigger value="audit">Auditoria</TabsTrigger>
           <TabsTrigger value="cashflow">Fluxo de Caixa</TabsTrigger>
           <TabsTrigger value="scenarios">Cenários</TabsTrigger>
         </TabsList>
@@ -535,6 +662,14 @@ export default function BudgetPlanningDashboard({ year, month, financialValue = 
             items={duplicatedPersonalExpenses}
             financialValue={financialValue}
             duplicate
+          />
+        </TabsContent>
+
+        <TabsContent value="audit" className="space-y-4">
+          <DeduplicationAudit
+            acceptedItems={importedActualExpenses}
+            duplicatedItems={ignoredDuplicateExpenses}
+            financialValue={financialValue}
           />
         </TabsContent>
 

@@ -2566,13 +2566,27 @@ export async function calculateBudgetMetrics(budgetId: number, collaboratorCosts
   }
   const actualItems = actualExpenses.map(item => toBudgetExpenseItem(item, classifyActualExpense(item), "actual"));
   const acceptedActualItems: ReturnType<typeof toBudgetExpenseItem>[] = [];
-  const duplicatedActualItems: ReturnType<typeof toBudgetExpenseItem>[] = [];
+  const duplicatedActualItems: Array<ReturnType<typeof toBudgetExpenseItem> & {
+    duplicateMatch?: ReturnType<typeof toBudgetExpenseItem>;
+    duplicateReason?: string;
+    duplicateConfidence?: number;
+    duplicateAmountDiff?: number;
+    duplicateTextSimilarity?: number;
+  }> = [];
   const comparisonBase = [...plannedItems, ...collaboratorItems];
 
   for (const item of actualItems) {
-    const duplicate = [...comparisonBase, ...acceptedActualItems].find(existing => isSameBudgetExpense(existing, item));
+    const duplicate = findBudgetDuplicate([...comparisonBase, ...acceptedActualItems], item);
     if (duplicate) {
-      duplicatedActualItems.push({ ...item, duplicateOf: `${duplicate.source}:${duplicate.id}` });
+      duplicatedActualItems.push({
+        ...item,
+        duplicateOf: `${duplicate.match.source}:${duplicate.match.id}`,
+        duplicateMatch: duplicate.match,
+        duplicateReason: duplicate.reason,
+        duplicateConfidence: duplicate.confidence,
+        duplicateAmountDiff: roundMoney(duplicate.amountDiff),
+        duplicateTextSimilarity: roundMoney(duplicate.textSimilarity * 100),
+      });
     } else {
       acceptedActualItems.push(item);
     }
@@ -2725,16 +2739,59 @@ function hasSharedBudgetMeaning(a: string, b: string) {
   return Array.from(left).some(token => right.has(token));
 }
 
-function isSameBudgetExpense(a: ReturnType<typeof toBudgetExpenseItem>, b: ReturnType<typeof toBudgetExpenseItem>) {
+function analyzeBudgetDuplicate(a: ReturnType<typeof toBudgetExpenseItem>, b: ReturnType<typeof toBudgetExpenseItem>) {
   const amountDiff = Math.abs(a.amount - b.amount);
   const amountTolerance = Math.max(2, Math.min(a.amount, b.amount) * 0.05);
-  if (amountDiff > amountTolerance) return false;
+  if (amountDiff > amountTolerance) return null;
   const aText = `${a.description} ${a.category}`;
   const bText = `${b.description} ${b.category}`;
   const normalizedA = normalizeBudgetText(aText);
   const normalizedB = normalizeBudgetText(bText);
-  if (normalizedA.includes(normalizedB) || normalizedB.includes(normalizedA)) return true;
-  return hasSharedBudgetMeaning(aText, bText) && textSimilarity(aText, bText) >= 0.5;
+  const similarity = textSimilarity(aText, bText);
+  const containsSameText = normalizedA.includes(normalizedB) || normalizedB.includes(normalizedA);
+  const sharesMeaning = hasSharedBudgetMeaning(aText, bText);
+
+  if (!containsSameText && (!sharesMeaning || similarity < 0.5)) return null;
+
+  const amountScore = Math.max(0, 1 - amountDiff / amountTolerance);
+  const textScore = containsSameText ? 1 : similarity;
+  const confidence = Math.round(((amountScore * 0.45) + (textScore * 0.55)) * 100);
+  const reasonParts = [
+    amountDiff === 0
+      ? "mesmo valor"
+      : `valor muito proximo, diferenca de ${formatBudgetAuditMoney(amountDiff)}`,
+    containsSameText
+      ? "descricao equivalente"
+      : `termos em comum: ${sharedBudgetTokens(aText, bText).join(", ") || "categoria parecida"}`,
+  ];
+
+  return {
+    match: a,
+    amountDiff,
+    textSimilarity: containsSameText ? 1 : similarity,
+    confidence,
+    reason: reasonParts.join(" e "),
+  };
+}
+
+function findBudgetDuplicate(
+  candidates: ReturnType<typeof toBudgetExpenseItem>[],
+  item: ReturnType<typeof toBudgetExpenseItem>
+) {
+  return candidates
+    .map(candidate => analyzeBudgetDuplicate(candidate, item))
+    .filter((result): result is NonNullable<typeof result> => Boolean(result))
+    .sort((a, b) => b.confidence - a.confidence || a.amountDiff - b.amountDiff)[0] ?? null;
+}
+
+function sharedBudgetTokens(a: string, b: string) {
+  const left = new Set(budgetTokens(a));
+  const right = new Set(budgetTokens(b));
+  return Array.from(left).filter(token => right.has(token));
+}
+
+function formatBudgetAuditMoney(value: number) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(roundMoney(value));
 }
 
 function classifyActualExpense(expense: LocalRecord): "fixed" | "variable" | "personal" {

@@ -297,6 +297,10 @@ describe("Budget Planning System", () => {
       expect(parseFloat(metrics.totalFixedCosts.toString())).toBe(700);
       expect(parseFloat(metrics.totalActualExpenses.toString())).toBe(0);
       expect(parseFloat(metrics.totalDuplicatedActualExpenses.toString())).toBe(710);
+      expect(metrics.ignoredDuplicateExpenses).toHaveLength(1);
+      expect(metrics.ignoredDuplicateExpenses?.[0].duplicateMatch?.description).toContain("Aluguel");
+      expect(metrics.ignoredDuplicateExpenses?.[0].duplicateReason).toContain("valor muito proximo");
+      expect(metrics.ignoredDuplicateExpenses?.[0].duplicateConfidence).toBeGreaterThanOrEqual(50);
     });
   });
 });
