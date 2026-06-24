@@ -35,6 +35,7 @@ import {
   Bell,
   Banknote,
   CalendarDays,
+  BrainCircuit,
   CheckCheck,
   DollarSign,
   FileBarChart2,
@@ -57,6 +58,7 @@ const navigationGroups = [
     label: "Visão geral",
     items: [
       { icon: LayoutDashboard, label: "Dashboard", path: "/" },
+      { icon: BrainCircuit, label: "IA Seven", path: "/ia" },
     ],
   },
   {

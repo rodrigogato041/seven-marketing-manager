@@ -212,7 +212,7 @@ const normalizeToolChoice = (
 const resolveApiUrl = () =>
   ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
     ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
-    : "https://forge.manus.im/v1/chat/completions";
+    : "https://api.openai.com/v1/chat/completions";
 
 const assertApiKey = () => {
   if (!ENV.forgeApiKey) {
@@ -280,9 +280,15 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   } = params;
 
   const payload: Record<string, unknown> = {
-    model: "gemini-2.5-flash",
+    model: ENV.openAiModel,
     messages: messages.map(normalizeMessage),
   };
+
+  const isReasoningModel = ENV.openAiModel.startsWith("gpt-5");
+
+  if (isReasoningModel) {
+    payload.reasoning_effort = ENV.openAiReasoningEffort;
+  }
 
   if (tools && tools.length > 0) {
     payload.tools = tools;
@@ -296,9 +302,11 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.tool_choice = normalizedToolChoice;
   }
 
-  payload.max_tokens = 32768
-  payload.thinking = {
-    "budget_tokens": 128
+  const outputLimit = params.maxTokens || params.max_tokens || 4000;
+  if (isReasoningModel) {
+    payload.max_completion_tokens = outputLimit;
+  } else {
+    payload.max_tokens = outputLimit;
   }
 
   const normalizedResponseFormat = normalizeResponseFormat({

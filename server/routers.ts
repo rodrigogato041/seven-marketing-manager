@@ -14,6 +14,7 @@ import { budgetPlanningRouter } from "./budgetPlanningRouter";
 import { pdfExportRouter } from "./pdfExportRouter";
 import { budgetAlertsRouter } from "./budgetAlertsRouter";
 import { googleCalendarRouter } from "./googleCalendarRouter";
+import { aiRouter } from "./aiRouter";
 
 const taskPrioritySchema = z.enum(["low", "medium", "high", "urgent"]);
 const taskRecurrenceSchema = z.enum(["none", "daily", "weekly", "biweekly", "monthly", "custom"]);
@@ -607,6 +608,7 @@ export const appRouter = router({
   pdfExport: pdfExportRouter,
   budgetAlerts: budgetAlertsRouter,
   googleCalendar: googleCalendarRouter,
+  ai: aiRouter,
 });
 
 export type AppRouter = typeof appRouter;

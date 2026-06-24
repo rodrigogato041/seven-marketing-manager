@@ -27,3 +27,9 @@ services:
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5.5
+      - key: OPENAI_REASONING_EFFORT
+        value: high

@@ -17,6 +17,7 @@ import CollectionsPage from "./pages/Collections";
 import { lazy, Suspense } from "react";
 
 const FinancialPage = lazy(() => import("./pages/Financial"));
+const AICenterPage = lazy(() => import("./pages/AICenter"));
 
 function Router() {
   return (
@@ -31,6 +32,13 @@ function Router() {
         <Route path="/calendario" component={CalendarPage} />
         <Route path="/cobrancas" component={CollectionsPage} />
         <Route path="/relatorios" component={ReportsPage} />
+        <Route path="/ia">
+          {() => (
+            <Suspense fallback={<div className="flex items-center justify-center h-64 text-muted-foreground">Carregando IA...</div>}>
+              <AICenterPage />
+            </Suspense>
+          )}
+        </Route>
         <Route path="/financeiro">
           {() => (
             <Suspense fallback={<div className="flex items-center justify-center h-64 text-muted-foreground">Carregando...</div>}>
