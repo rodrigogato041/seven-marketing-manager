@@ -136,6 +136,25 @@ export default function FinancialPage() {
   const paidDetails = useMemo(() =>
     forecast?.details?.filter(d => d.status === "paid") || [], [forecast]);
 
+  const periodRange = useMemo(() => ({
+    start: new Date(selectedYear, selectedMonth - 1, 1).getTime(),
+    end: new Date(selectedYear, selectedMonth, 0, 23, 59, 59, 999).getTime(),
+  }), [selectedYear, selectedMonth]);
+
+  const periodExpensesList = useMemo(() =>
+    (expensesList || []).filter(expense => {
+      const date = Number(expense.date ?? 0);
+      return date >= periodRange.start && date <= periodRange.end;
+    }), [expensesList, periodRange]);
+
+  const periodExpenseTotal = useMemo(() =>
+    periodExpensesList.reduce((sum, expense) => sum + Number(expense.amount ?? 0), 0),
+    [periodExpensesList]
+  );
+
+  const periodRevenue = forecast?.received ?? 0;
+  const periodProfit = periodRevenue - periodExpenseTotal;
+
   // Combined chart data
   const combinedData = useMemo(() => {
     const map = new Map<string, { month: string; receita: number; despesa: number }>();
@@ -168,8 +187,6 @@ export default function FinancialPage() {
     setSelectedMonth(m);
     setSelectedYear(y);
   };
-
-  const profit = (stats?.totalRevenue ?? 0) - (stats?.totalExpenses ?? 0);
 
   return (
     <div className="space-y-6">
@@ -439,8 +456,13 @@ export default function FinancialPage() {
         <TabsContent value="expenses">
           <Card className="shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-sm">Registro de Despesas</CardTitle>
-              <Button size="sm" onClick={() => { setExpForm({ amount: "", category: "", description: "", date: "", collaboratorId: "" }); setExpOpen(true); }}
+              <div>
+                <CardTitle className="text-sm">Registro de Despesas</CardTitle>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Filtrado por {monthNames[selectedMonth - 1]} de {selectedYear}
+                </p>
+              </div>
+              <Button size="sm" onClick={() => { setExpForm({ amount: "", category: "", description: "", date: `${selectedYear}-${String(selectedMonth).padStart(2, "0")}-01`, collaboratorId: "" }); setExpOpen(true); }}
                 className="text-xs">
                 <Plus className="h-3.5 w-3.5 mr-1" /> Nova Despesa
               </Button>
@@ -449,24 +471,24 @@ export default function FinancialPage() {
               {/* Expense KPIs */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
                 <div className="p-3 rounded-lg bg-muted/30 text-center">
-                  <p className="text-xs text-muted-foreground">Despesas Totais</p>
-                  <p className="text-lg font-bold text-foreground">{financialValue(formatCurrency(stats?.totalExpenses ?? 0))}</p>
+                  <p className="text-xs text-muted-foreground">Despesas do Periodo</p>
+                  <p className="text-lg font-bold text-foreground">{financialValue(formatCurrency(periodExpenseTotal))}</p>
                 </div>
                 <div className="p-3 rounded-lg bg-muted/30 text-center">
-                  <p className="text-xs text-muted-foreground">Receita Total</p>
-                  <p className="text-lg font-bold text-emerald-600">{financialValue(formatCurrency(stats?.totalRevenue ?? 0))}</p>
+                  <p className="text-xs text-muted-foreground">Receita Recebida</p>
+                  <p className="text-lg font-bold text-emerald-600">{financialValue(formatCurrency(periodRevenue))}</p>
                 </div>
                 <div className="p-3 rounded-lg bg-muted/30 text-center">
-                  <p className="text-xs text-muted-foreground">Lucro Líquido</p>
-                  <p className={`text-lg font-bold ${profit >= 0 ? "text-emerald-600" : "text-destructive"}`}>{financialValue(formatCurrency(profit))}</p>
+                  <p className="text-xs text-muted-foreground">Saldo do Periodo</p>
+                  <p className={`text-lg font-bold ${periodProfit >= 0 ? "text-emerald-600" : "text-destructive"}`}>{financialValue(formatCurrency(periodProfit))}</p>
                 </div>
               </div>
 
-              {!expensesList || expensesList.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">Nenhuma despesa registrada</p>
+              {periodExpensesList.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhuma despesa registrada neste periodo</p>
               ) : (
                 <div className="space-y-2">
-                  {expensesList.map(e => (
+                  {periodExpensesList.map(e => (
                     <div key={e.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
                       <div>
                         <div className="flex items-center gap-2">
@@ -498,16 +520,18 @@ export default function FinancialPage() {
                 <TrendingDown className="h-4 w-4 text-orange-600" />
                 Distribuição de Despesas por Categoria
               </CardTitle>
-              <p className="text-xs text-muted-foreground mt-2">Visualize onde estão sendo alocados os recursos da empresa</p>
+              <p className="text-xs text-muted-foreground mt-2">
+                Visualize onde os recursos foram alocados em {monthNames[selectedMonth - 1]} de {selectedYear}
+              </p>
             </CardHeader>
             <CardContent>
-              {!expensesList || expensesList.length === 0 ? (
+              {periodExpensesList.length === 0 ? (
                 <div className="text-center py-12">
                   <DollarSign className="h-10 w-10 opacity-20 mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">Nenhuma despesa registrada para análise</p>
+                  <p className="text-sm text-muted-foreground">Nenhuma despesa registrada neste periodo para análise</p>
                 </div>
               ) : (
-                <ExpensesPieChart expenses={expensesList} height={420} />
+                <ExpensesPieChart expenses={periodExpensesList} height={420} />
               )}
             </CardContent>
           </Card>
@@ -543,12 +567,12 @@ export default function FinancialPage() {
 
         {/* INVESTIMENTOS */}
         <TabsContent value="investments">
-          <InvestmentsTab />
+          <InvestmentsTab selectedYear={selectedYear} selectedMonth={selectedMonth} />
         </TabsContent>
 
         {/* CARTÃO DE CRÉDITO */}
         <TabsContent value="creditCard">
-          <CreditCardTab />
+          <CreditCardTab selectedYear={selectedYear} selectedMonth={selectedMonth} />
         </TabsContent>
       </Tabs>
 

@@ -32,6 +32,46 @@ function createUnauthContext() {
 }
 
 describe("Financial Routers - Investments & Credit Card", () => {
+  describe("Budget Alerts Router - Authentication and validation", () => {
+    it("should require authentication for budgetAlerts.checkBudgetAlerts", async () => {
+      const caller = appRouter.createCaller(createUnauthContext());
+      try {
+        await caller.budgetAlerts.checkBudgetAlerts({ year: 2026, month: 6 });
+        expect.fail("Should have thrown");
+      } catch (error: any) {
+        expect(error.code).toBe("UNAUTHORIZED");
+      }
+    });
+
+    it("should require authentication for budgetAlerts.updateBudgetLimit", async () => {
+      const caller = appRouter.createCaller(createUnauthContext());
+      try {
+        await caller.budgetAlerts.updateBudgetLimit({
+          category: "Software",
+          costType: "fixed",
+          limitAmount: 500,
+        });
+        expect.fail("Should have thrown");
+      } catch (error: any) {
+        expect(error.code).toBe("UNAUTHORIZED");
+      }
+    });
+
+    it("should validate budget limit amount", async () => {
+      const caller = appRouter.createCaller(createAuthContext());
+      try {
+        await caller.budgetAlerts.updateBudgetLimit({
+          category: "Software",
+          costType: "fixed",
+          limitAmount: 0,
+        });
+        expect.fail("Should have thrown validation error");
+      } catch (error: any) {
+        expect(error.code).toBe("BAD_REQUEST");
+      }
+    });
+  });
+
   describe("Investments Router - Authentication", () => {
     it("should require authentication for investments.create", async () => {
       const caller = appRouter.createCaller(createUnauthContext());

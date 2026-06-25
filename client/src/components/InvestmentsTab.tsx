@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,20 +35,60 @@ function formatInvestmentDate(value: number) {
   }).format(new Date(value));
 }
 
-export default function InvestmentsTab() {
+type InvestmentsTabProps = {
+  selectedYear?: number;
+  selectedMonth?: number;
+};
+
+export default function InvestmentsTab({ selectedYear, selectedMonth }: InvestmentsTabProps) {
+  const currentDate = new Date();
+  const year = selectedYear ?? currentDate.getFullYear();
+  const month = selectedMonth ?? currentDate.getMonth() + 1;
   const [isOpen, setIsOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", type: "fixed" as "fixed" | "variable", amount: "", description: "", date: "" });
+  const [form, setForm] = useState({
+    name: "",
+    type: "fixed" as "fixed" | "variable",
+    amount: "",
+    ticker: "",
+    quantity: "",
+    currentValue: "",
+    description: "",
+    date: "",
+  });
 
   const { data: investments = [] } = trpc.investments.list.useQuery();
-  const { data: summary } = trpc.investments.getSummary.useQuery();
   const utils = trpc.useUtils();
+
+  const periodRange = useMemo(() => ({
+    start: Date.UTC(year, month - 1, 1),
+    end: Date.UTC(year, month, 0, 23, 59, 59, 999),
+  }), [year, month]);
+
+  const periodInvestments = useMemo(() =>
+    investments.filter(investment => investment.date >= periodRange.start && investment.date <= periodRange.end),
+    [investments, periodRange]
+  );
+
+  const periodSummary = useMemo(() => {
+    const fixed = periodInvestments
+      .filter(investment => investment.type === "fixed")
+      .reduce((sum, investment) => sum + Number(investment.amount || 0), 0);
+    const variableInvested = periodInvestments
+      .filter(investment => investment.type === "variable")
+      .reduce((sum, investment) => sum + Number(investment.amount || 0), 0);
+    const variableCurrent = periodInvestments
+      .filter(investment => investment.type === "variable")
+      .reduce((sum, investment: any) => sum + Number(investment.currentValue || investment.amount || 0), 0);
+    const result = variableCurrent - variableInvested;
+    return { fixed, variable: variableInvested, variableCurrent, result, total: fixed + variableCurrent };
+  }, [periodInvestments]);
 
   const createMut = trpc.investments.create.useMutation({
     onSuccess: () => {
       utils.investments.list.invalidate();
       utils.investments.getSummary.invalidate();
       setIsOpen(false);
-      setForm({ name: "", type: "fixed", amount: "", description: "", date: "" });
+      setForm({ name: "", type: "fixed", amount: "", ticker: "", quantity: "", currentValue: "", description: "", date: "" });
       toast.success("Investimento registrado!");
     },
     onError: () => toast.error("Erro ao registrar investimento"),
@@ -77,6 +117,9 @@ export default function InvestmentsTab() {
       name: form.name,
       type: form.type,
       amount: form.amount,
+      ticker: form.type === "variable" ? form.ticker || undefined : undefined,
+      quantity: form.type === "variable" ? form.quantity || undefined : undefined,
+      currentValue: form.type === "variable" ? form.currentValue || form.amount : undefined,
       description: form.description,
       date: investmentDate,
     });
@@ -85,37 +128,55 @@ export default function InvestmentsTab() {
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="rounded-lg border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+        Investimentos registrados em {String(month).padStart(2, "0")}/{year}. Estes valores sao informativos e nao entram no lucro, caixa ou despesas operacionais.
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="border-l-4 border-l-emerald-500">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground">Renda Fixa</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-emerald-600">{formatCurrency(summary?.fixed ?? 0)}</p>
+            <p className="text-2xl font-bold text-emerald-600">{formatCurrency(periodSummary.fixed)}</p>
           </CardContent>
         </Card>
 
         <Card className="border-l-4 border-l-blue-500">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Renda Variável</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Renda Variável Investida</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-blue-600">{formatCurrency(summary?.variable ?? 0)}</p>
+            <p className="text-2xl font-bold text-blue-600">{formatCurrency(periodSummary.variable)}</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-l-4 border-l-cyan-500">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Valor Atual Variável</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-cyan-700">{formatCurrency(periodSummary.variableCurrent)}</p>
           </CardContent>
         </Card>
 
         <Card className="border-l-4 border-l-purple-500">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Investido</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Resultado Variável</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-purple-600">{formatCurrency(summary?.total ?? 0)}</p>
+            <p className={`text-2xl font-bold ${periodSummary.result >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+              {formatCurrency(periodSummary.result)}
+            </p>
           </CardContent>
         </Card>
       </div>
 
       {/* Add Button */}
-      <Button onClick={() => setIsOpen(true)} className="w-full">
+      <Button onClick={() => {
+        setForm({ name: "", type: "fixed", amount: "", ticker: "", quantity: "", currentValue: "", description: "", date: `${year}-${String(month).padStart(2, "0")}-01` });
+        setIsOpen(true);
+      }} className="w-full">
         <Plus className="w-4 h-4 mr-2" />
         Novo Investimento
       </Button>
@@ -126,8 +187,8 @@ export default function InvestmentsTab() {
           <CardTitle>Histórico de Investimentos</CardTitle>
         </CardHeader>
         <CardContent>
-          {investments.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">Nenhum investimento registrado</p>
+          {periodInvestments.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">Nenhum investimento registrado neste periodo</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -136,21 +197,38 @@ export default function InvestmentsTab() {
                     <th className="text-left py-3 px-4 font-semibold">Nome</th>
                     <th className="text-left py-3 px-4 font-semibold">Tipo</th>
                     <th className="text-right py-3 px-4 font-semibold">Valor</th>
+                    <th className="text-right py-3 px-4 font-semibold">Atual</th>
+                    <th className="text-right py-3 px-4 font-semibold">Resultado</th>
                     <th className="text-left py-3 px-4 font-semibold">Data</th>
                     <th className="text-left py-3 px-4 font-semibold">Descrição</th>
                     <th className="text-center py-3 px-4 font-semibold">Ação</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {investments.map((inv) => (
+                  {periodInvestments.map((inv: any) => {
+                    const currentValue = Number(inv.currentValue || inv.amount || 0);
+                    const investedValue = Number(inv.amount || 0);
+                    const result = inv.type === "variable" ? currentValue - investedValue : 0;
+                    return (
                     <tr key={inv.id} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="py-3 px-4 font-medium">{inv.name}</td>
+                      <td className="py-3 px-4 font-medium">
+                        <div>{inv.name}</div>
+                        {inv.type === "variable" && (inv.ticker || inv.quantity) && (
+                          <div className="text-xs text-muted-foreground">
+                            {[inv.ticker, inv.quantity ? `${inv.quantity} un.` : null].filter(Boolean).join(" - ")}
+                          </div>
+                        )}
+                      </td>
                       <td className="py-3 px-4">
                         <Badge className={inv.type === "fixed" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}>
                           {inv.type === "fixed" ? "Renda Fixa" : "Renda Variável"}
                         </Badge>
                       </td>
                       <td className="py-3 px-4 text-right font-semibold">{formatCurrency(inv.amount)}</td>
+                      <td className="py-3 px-4 text-right font-semibold">{inv.type === "variable" ? formatCurrency(currentValue) : "-"}</td>
+                      <td className={`py-3 px-4 text-right font-semibold ${result >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                        {inv.type === "variable" ? formatCurrency(result) : "-"}
+                      </td>
                       <td className="py-3 px-4">{formatInvestmentDate(inv.date)}</td>
                       <td className="py-3 px-4 text-muted-foreground">{inv.description || "-"}</td>
                       <td className="py-3 px-4 text-center">
@@ -164,7 +242,7 @@ export default function InvestmentsTab() {
                         </Button>
                       </td>
                     </tr>
-                  ))}
+                  )})}
                 </tbody>
               </table>
             </div>
@@ -209,6 +287,38 @@ export default function InvestmentsTab() {
                 placeholder="0.00"
               />
             </div>
+            {form.type === "variable" && (
+              <div className="grid grid-cols-1 gap-4 rounded-lg border bg-blue-50/40 p-3 sm:grid-cols-3">
+                <div>
+                  <Label>Codigo/Ativo</Label>
+                  <Input
+                    value={form.ticker}
+                    onChange={(e) => setForm({ ...form, ticker: e.target.value.toUpperCase() })}
+                    placeholder="Ex: PETR4"
+                  />
+                </div>
+                <div>
+                  <Label>Quantidade</Label>
+                  <Input
+                    type="number"
+                    step="0.0001"
+                    value={form.quantity}
+                    onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <Label>Valor Atual (R$)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.currentValue}
+                    onChange={(e) => setForm({ ...form, currentValue: e.target.value })}
+                    placeholder={form.amount || "0.00"}
+                  />
+                </div>
+              </div>
+            )}
             <div>
               <Label>Data</Label>
               <Input

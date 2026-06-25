@@ -311,8 +311,8 @@
 As seguintes melhorias foram identificadas como oportunidades para versões futuras:
 
 **Alertas de Orçamento:**
-- Adicionar testes Vitest para budgetAlertsRouter
-- Adicionar tratamento de erro no componente BudgetAlerts
+- [x] Adicionar testes Vitest para budgetAlertsRouter
+- [x] Adicionar tratamento de erro no componente BudgetAlerts
 
 **Google Calendar Integration:**
 - Implementar OAuth2 real do Google Calendar (exchange de authorization code)
@@ -323,6 +323,7 @@ As seguintes melhorias foram identificadas como oportunidades para versões futu
 - Implementar tratamento de erro no componente GoogleCalendarSync
 
 **Outras Melhorias:**
-- Adicionar filtros por período nas abas financeiras
+- [x] Adicionar filtros por período nas abas financeiras
+- [x] Adicionar filtro mensal em Investimentos e Cartão de Crédito
+- [x] Corrigir valores de pagamento específicos via edição no detalhe do cliente
 - Implementar integração com renda variável
-- Corrigir valores de pagamento específicos via Management UI

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,14 +34,40 @@ function formatDateUTC(value: number) {
   }).format(new Date(value));
 }
 
-export default function CreditCardTab() {
+type CreditCardTabProps = {
+  selectedYear?: number;
+  selectedMonth?: number;
+};
+
+export default function CreditCardTab({ selectedYear, selectedMonth }: CreditCardTabProps) {
+  const currentDate = new Date();
+  const year = selectedYear ?? currentDate.getFullYear();
+  const month = selectedMonth ?? currentDate.getMonth() + 1;
   const [isOpen, setIsOpen] = useState(false);
   const [form, setForm] = useState({ description: "", amount: "", category: "", transactionDate: "", status: "pending" as "pending" | "paid" });
   const [filterStatus, setFilterStatus] = useState<"pending" | "paid" | "all">("all");
 
   const { data: transactions = [] } = trpc.creditCard.list.useQuery();
-  const { data: summary } = trpc.creditCard.getSummary.useQuery();
   const utils = trpc.useUtils();
+
+  const periodRange = useMemo(() => ({
+    start: Date.UTC(year, month - 1, 1),
+    end: Date.UTC(year, month, 0, 23, 59, 59, 999),
+  }), [year, month]);
+
+  const periodTransactions = useMemo(() =>
+    transactions.filter(transaction =>
+      transaction.transactionDate >= periodRange.start && transaction.transactionDate <= periodRange.end
+    ), [transactions, periodRange]);
+
+  const periodSummary = useMemo(() => ({
+    pending: periodTransactions
+      .filter(transaction => transaction.status === "pending")
+      .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0),
+    paid: periodTransactions
+      .filter(transaction => transaction.status === "paid")
+      .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0),
+  }), [periodTransactions]);
 
   const createMut = trpc.creditCard.create.useMutation({
     onSuccess: () => {
@@ -91,13 +117,17 @@ export default function CreditCardTab() {
     });
   };
 
-  const filteredTransactions = filterStatus === "all" 
-    ? transactions 
-    : transactions.filter(t => t.status === filterStatus);
+  const filteredTransactions = filterStatus === "all"
+    ? periodTransactions
+    : periodTransactions.filter(t => t.status === filterStatus);
 
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
+      <div className="rounded-lg border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+        Transacoes filtradas por {String(month).padStart(2, "0")}/{year}. Pendentes ajudam a prever saidas futuras; pagos ja representam desembolso registrado.
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="border-l-4 border-l-amber-500">
           <CardHeader className="pb-3">
@@ -107,7 +137,7 @@ export default function CreditCardTab() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-amber-600">{formatCurrency(summary?.pending ?? 0)}</p>
+            <p className="text-2xl font-bold text-amber-600">{formatCurrency(periodSummary.pending)}</p>
             <p className="text-xs text-muted-foreground mt-1">Não impacta faturamento até pagamento</p>
           </CardContent>
         </Card>
@@ -120,13 +150,16 @@ export default function CreditCardTab() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-emerald-600">{formatCurrency(summary?.paid ?? 0)}</p>
+            <p className="text-2xl font-bold text-emerald-600">{formatCurrency(periodSummary.paid)}</p>
           </CardContent>
         </Card>
       </div>
 
       {/* Add Button */}
-      <Button onClick={() => setIsOpen(true)} className="w-full">
+      <Button onClick={() => {
+        setForm({ description: "", amount: "", category: "", transactionDate: `${year}-${String(month).padStart(2, "0")}-01`, status: "pending" });
+        setIsOpen(true);
+      }} className="w-full">
         <Plus className="w-4 h-4 mr-2" />
         Nova Transação no Cartão
       </Button>
@@ -160,7 +193,7 @@ export default function CreditCardTab() {
         </CardHeader>
         <CardContent>
           {filteredTransactions.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">Nenhuma transação registrada</p>
+            <p className="text-center text-muted-foreground py-8">Nenhuma transação registrada neste periodo</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

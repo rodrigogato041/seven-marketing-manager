@@ -242,7 +242,7 @@ const paymentRouter = router({
     id: z.number(),
     amount: z.string().optional(),
     dueDate: z.number().optional(),
-    paidDate: z.number().optional(),
+    paidDate: z.number().nullable().optional(),
     status: z.enum(["paid", "pending", "overdue"]).optional(),
     description: z.string().optional(),
   })).mutation(({ input }) => {
@@ -497,6 +497,9 @@ const investmentRouter = router({
     name: z.string().min(1),
     type: z.enum(["fixed", "variable"]),
     amount: z.string(),
+    ticker: z.string().optional(),
+    quantity: z.string().optional(),
+    currentValue: z.string().optional(),
     description: z.string().optional(),
     date: z.number(),
   })).mutation(({ input }) => db.createInvestment(input)),
@@ -505,6 +508,9 @@ const investmentRouter = router({
     name: z.string().optional(),
     type: z.enum(["fixed", "variable"]).optional(),
     amount: z.string().optional(),
+    ticker: z.string().optional(),
+    quantity: z.string().optional(),
+    currentValue: z.string().optional(),
     description: z.string().optional(),
     date: z.number().optional(),
   })).mutation(({ input }) => {

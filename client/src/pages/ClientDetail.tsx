@@ -13,7 +13,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Phone, Mail, MessageCircle, FileText, Plus, Trash2, Download, CheckCircle, Clock, AlertTriangle, Undo2, CalendarClock, FileCheck2, TrendingUp, Pencil } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MessageCircle, FileText, Plus, Trash2, Download, CheckCircle, Clock, AlertTriangle, Undo2, CalendarClock, FileCheck2, TrendingUp, Pencil, CalendarCheck2 } from "lucide-react";
 import { useLocation, useParams } from "wouter";
 import { toast } from "sonner";
 import { Client360Overview } from "@/components/ClientIntelligenceDashboard";
@@ -36,6 +36,21 @@ function parseLocalDate(value: string) {
   const [year, month, day] = value.split("-").map(Number);
   if (!year || !month || !day) return Date.now();
   return new Date(year, month - 1, day, 12, 0, 0, 0).getTime();
+}
+
+function formatTodayInputDate() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addYearsToInputDate(value: string, years: number) {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return "";
+  const date = new Date(year + years, month - 1, day, 12, 0, 0, 0);
+  return formatInputDate(date.getTime());
 }
 
 function formatInputDate(ts: number | null | undefined) {
@@ -71,6 +86,29 @@ function quickFormFromClient(client: any) {
     imageQuantity: client?.imageQuantity ? String(client.imageQuantity) : "0",
     otherServices: client?.otherServices || "",
     notes: client?.notes || "",
+  };
+}
+
+function renewFormFromClient(client: any) {
+  const renewedAt = formatTodayInputDate();
+  const currentRenewal = formatInputDate(client?.contractRenewalDate);
+  const currentEnd = formatInputDate(client?.contractEndDate);
+  return {
+    renewedAt,
+    nextRenewalDate: currentRenewal ? addYearsToInputDate(currentRenewal, 1) : addYearsToInputDate(renewedAt, 1),
+    newEndDate: currentEnd ? addYearsToInputDate(currentEnd, 1) : addYearsToInputDate(renewedAt, 1),
+    note: "",
+  };
+}
+
+function paymentFormFromPayment(payment: any) {
+  return {
+    id: payment?.id ?? null,
+    amount: payment?.amount ? String(payment.amount) : "",
+    dueDate: formatInputDate(payment?.dueDate),
+    status: payment?.status || "pending",
+    description: payment?.description || "",
+    paidDate: payment?.paidDate ?? null,
   };
 }
 
@@ -232,9 +270,12 @@ export default function ClientDetailPage() {
 
   const [quickEditOpen, setQuickEditOpen] = useState(false);
   const [quickForm, setQuickForm] = useState(() => quickFormFromClient(null));
+  const [renewOpen, setRenewOpen] = useState(false);
+  const [renewForm, setRenewForm] = useState(() => renewFormFromClient(null));
   useEffect(() => {
     if (client && !quickEditOpen) setQuickForm(quickFormFromClient(client));
-  }, [client, quickEditOpen]);
+    if (client && !renewOpen) setRenewForm(renewFormFromClient(client));
+  }, [client, quickEditOpen, renewOpen]);
   const updateClient = trpc.clients.update.useMutation({
     onSuccess: async () => {
       await refreshClientIntelligence();
@@ -242,6 +283,14 @@ export default function ClientDetailPage() {
       toast.success("Cliente atualizado!");
     },
     onError: () => toast.error("Erro ao atualizar cliente"),
+  });
+  const renewContract = trpc.clients.update.useMutation({
+    onSuccess: async () => {
+      await refreshClientIntelligence();
+      setRenewOpen(false);
+      toast.success("Renovacao registrada!");
+    },
+    onError: () => toast.error("Erro ao registrar renovacao"),
   });
 
   function openQuickEdit() {
@@ -277,9 +326,39 @@ export default function ClientDetailPage() {
     });
   }
 
+  function openRenewContract() {
+    setRenewForm(renewFormFromClient(client));
+    setRenewOpen(true);
+  }
+
+  function saveRenewContract() {
+    const renewedAtLabel = renewForm.renewedAt ? formatDate(parseLocalDate(renewForm.renewedAt)) : formatDate(Date.now());
+    const nextRenewalLabel = renewForm.nextRenewalDate ? formatDate(parseLocalDate(renewForm.nextRenewalDate)) : "-";
+    const newEndLabel = renewForm.newEndDate ? formatDate(parseLocalDate(renewForm.newEndDate)) : "-";
+    const extraNote = renewForm.note.trim();
+    const renewalLog = [
+      `Contrato renovado em ${renewedAtLabel}.`,
+      `Proxima renovacao: ${nextRenewalLabel}.`,
+      `Novo vencimento: ${newEndLabel}.`,
+      extraNote ? `Observacao: ${extraNote}` : null,
+    ].filter(Boolean).join(" ");
+    const previousNotes = client?.contractNotes?.trim();
+
+    renewContract.mutate({
+      id: clientId,
+      status: "active",
+      contractStatus: "active",
+      contractRenewalDate: renewForm.nextRenewalDate ? parseLocalDate(renewForm.nextRenewalDate) : null,
+      contractEndDate: renewForm.newEndDate ? parseLocalDate(renewForm.newEndDate) : null,
+      contractNotes: previousNotes ? `${previousNotes}\n\n${renewalLog}` : renewalLog,
+    });
+  }
+
   // Payment dialog
   const [payOpen, setPayOpen] = useState(false);
   const [payForm, setPayForm] = useState({ amount: "", dueDate: "", status: "pending" as string, description: "" });
+  const [paymentEditOpen, setPaymentEditOpen] = useState(false);
+  const [paymentEditForm, setPaymentEditForm] = useState(() => paymentFormFromPayment(null));
   const createPayment = trpc.payments.create.useMutation({
     onSuccess: () => {
       utils.payments.list.invalidate();
@@ -323,6 +402,36 @@ export default function ClientDetailPage() {
       toast.success("Pagamento removido!");
     },
   });
+  const updatePayment = trpc.payments.update.useMutation({
+    onSuccess: () => {
+      utils.payments.list.invalidate();
+      utils.payments.billingForecast.invalidate();
+      utils.dashboard.stats.invalidate();
+      utils.dashboard.monthlyRevenue.invalidate();
+      refreshClientIntelligence();
+      setPaymentEditOpen(false);
+      toast.success("Pagamento atualizado!");
+    },
+    onError: () => toast.error("Erro ao atualizar pagamento"),
+  });
+
+  function openPaymentEdit(payment: any) {
+    setPaymentEditForm(paymentFormFromPayment(payment));
+    setPaymentEditOpen(true);
+  }
+
+  function savePaymentEdit() {
+    if (!paymentEditForm.id) return;
+    const status = paymentEditForm.status as "paid" | "pending" | "overdue";
+    updatePayment.mutate({
+      id: paymentEditForm.id,
+      amount: paymentEditForm.amount,
+      dueDate: parseLocalDate(paymentEditForm.dueDate),
+      status,
+      paidDate: status === "paid" ? (paymentEditForm.paidDate || Date.now()) : null,
+      description: paymentEditForm.description || undefined,
+    });
+  }
 
   // Document upload
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -439,6 +548,10 @@ export default function ClientDetailPage() {
                 <p className="mt-1 text-xs text-muted-foreground">Renovação, vencimento, cobrança, reajuste e observações formais do cliente.</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" onClick={openRenewContract}>
+                  <CalendarCheck2 className="mr-2 h-4 w-4" />
+                  Marcar renovacao
+                </Button>
                 <Button variant="outline" size="sm" onClick={openQuickEdit}>
                   <Pencil className="mr-2 h-4 w-4" />
                   Editar contrato
@@ -534,6 +647,15 @@ export default function ClientDetailPage() {
                           </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs"
+                            onClick={() => openPaymentEdit(p)}
+                          >
+                            <Pencil className="h-3.5 w-3.5 mr-1" />
+                            Editar
+                          </Button>
                           {p.status === "paid" ? (
                             <Button
                               variant="outline"
@@ -630,6 +752,51 @@ export default function ClientDetailPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Renewal Dialog */}
+      <Dialog open={renewOpen} onOpenChange={setRenewOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Marcar contrato como renovado</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-sm text-emerald-900">
+              Esta acao registra a renovacao no historico do contrato, mantem o cliente ativo e atualiza as proximas datas de controle.
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="space-y-2">
+                <Label>Renovado em</Label>
+                <Input type="date" value={renewForm.renewedAt} onChange={e => setRenewForm(f => ({ ...f, renewedAt: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Proxima renovacao</Label>
+                <Input type="date" value={renewForm.nextRenewalDate} onChange={e => setRenewForm(f => ({ ...f, nextRenewalDate: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Novo vencimento</Label>
+                <Input type="date" value={renewForm.newEndDate} onChange={e => setRenewForm(f => ({ ...f, newEndDate: e.target.value }))} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Observacao da renovacao</Label>
+              <Textarea
+                rows={3}
+                value={renewForm.note}
+                onChange={e => setRenewForm(f => ({ ...f, note: e.target.value }))}
+                placeholder="Ex.: Renovado por mais 12 meses, mesmo pacote e mesmo valor."
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenewOpen(false)}>Cancelar</Button>
+            <Button onClick={saveRenewContract} disabled={!renewForm.renewedAt || (!renewForm.nextRenewalDate && !renewForm.newEndDate) || renewContract.isPending}>
+              {renewContract.isPending ? "Registrando..." : "Registrar renovacao"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Quick Edit Dialog */}
       <Dialog open={quickEditOpen} onOpenChange={setQuickEditOpen}>
@@ -763,6 +930,63 @@ export default function ClientDetailPage() {
             <Button variant="outline" onClick={() => setQuickEditOpen(false)}>Cancelar</Button>
             <Button onClick={saveQuickEdit} disabled={!quickForm.companyName.trim() || !quickForm.contactName.trim() || updateClient.isPending}>
               {updateClient.isPending ? "Salvando..." : "Salvar alteracoes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment Edit Dialog */}
+      <Dialog open={paymentEditOpen} onOpenChange={setPaymentEditOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Editar Pagamento</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Valor (R$)</Label>
+                <Input
+                  type="number"
+                  value={paymentEditForm.amount}
+                  onChange={e => setPaymentEditForm(f => ({ ...f, amount: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Data de Vencimento</Label>
+                <Input
+                  type="date"
+                  value={paymentEditForm.dueDate}
+                  onChange={e => setPaymentEditForm(f => ({ ...f, dueDate: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select value={paymentEditForm.status} onValueChange={value => setPaymentEditForm(f => ({ ...f, status: value }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pending">Pendente</SelectItem>
+                  <SelectItem value="paid">Pago</SelectItem>
+                  <SelectItem value="overdue">Atrasado</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Ao voltar para pendente ou atrasado, a baixa anterior deixa de contar como recebida.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Descricao</Label>
+              <Input
+                value={paymentEditForm.description}
+                onChange={e => setPaymentEditForm(f => ({ ...f, description: e.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPaymentEditOpen(false)}>Cancelar</Button>
+            <Button
+              onClick={savePaymentEdit}
+              disabled={!paymentEditForm.amount || !paymentEditForm.dueDate || updatePayment.isPending}
+            >
+              {updatePayment.isPending ? "Salvando..." : "Salvar pagamento"}
             </Button>
           </DialogFooter>
         </DialogContent>

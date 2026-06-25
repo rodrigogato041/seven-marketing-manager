@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, AlertCircle, Info } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { AlertTriangle, AlertCircle, Info, RefreshCw } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
 interface BudgetAlertsProps {
@@ -13,7 +14,7 @@ function formatCurrency(value: number) {
 }
 
 export default function BudgetAlerts({ year, month }: BudgetAlertsProps) {
-  const { data, isLoading } = trpc.budgetAlerts.checkBudgetAlerts.useQuery({ year, month });
+  const { data, isLoading, isError, error, refetch, isFetching } = trpc.budgetAlerts.checkBudgetAlerts.useQuery({ year, month });
 
   if (isLoading) {
     return (
@@ -23,6 +24,29 @@ export default function BudgetAlerts({ year, month }: BudgetAlertsProps) {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">Carregando alertas...</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (isError) {
+    return (
+      <Card className="border-red-200 bg-red-50">
+        <CardHeader>
+          <CardTitle className="text-sm flex items-center gap-2 text-red-700">
+            <AlertCircle className="h-4 w-4" />
+            Alertas de Orcamento indisponiveis
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-red-700">
+            Nao foi possivel carregar os alertas agora. Os calculos financeiros continuam salvos, mas este bloco precisa ser recarregado.
+          </p>
+          {error?.message ? <p className="text-xs text-red-600">{error.message}</p> : null}
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="border-red-200 bg-white text-red-700 hover:bg-red-100">
+            <RefreshCw className={`mr-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+            Tentar novamente
+          </Button>
         </CardContent>
       </Card>
     );
