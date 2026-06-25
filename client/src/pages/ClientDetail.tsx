@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -12,7 +13,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Phone, Mail, MessageCircle, FileText, Plus, Trash2, Download, CheckCircle, Clock, AlertTriangle, Undo2, CalendarClock, FileCheck2, TrendingUp } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MessageCircle, FileText, Plus, Trash2, Download, CheckCircle, Clock, AlertTriangle, Undo2, CalendarClock, FileCheck2, TrendingUp, Pencil } from "lucide-react";
 import { useLocation, useParams } from "wouter";
 import { toast } from "sonner";
 import { Client360Overview } from "@/components/ClientIntelligenceDashboard";
@@ -35,6 +36,42 @@ function parseLocalDate(value: string) {
   const [year, month, day] = value.split("-").map(Number);
   if (!year || !month || !day) return Date.now();
   return new Date(year, month - 1, day, 12, 0, 0, 0).getTime();
+}
+
+function formatInputDate(ts: number | null | undefined) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  const year = d.getUTCFullYear();
+  const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function quickFormFromClient(client: any) {
+  return {
+    companyName: client?.companyName || "",
+    contactName: client?.contactName || "",
+    phone: client?.phone || "",
+    whatsapp: client?.whatsapp || "",
+    email: client?.email || "",
+    monthlyValue: client?.monthlyValue ? String(client.monthlyValue) : "",
+    startDate: formatInputDate(client?.startDate),
+    contractRenewalDate: formatInputDate(client?.contractRenewalDate),
+    contractEndDate: formatInputDate(client?.contractEndDate),
+    contractPaymentMethod: client?.contractPaymentMethod || "",
+    contractDueDay: client?.contractDueDay ? String(client.contractDueDay) : "",
+    contractAdjustment: client?.contractAdjustment || "",
+    contractNotes: client?.contractNotes || "",
+    contractStatus: client?.contractStatus || "pending",
+    status: client?.status || "active",
+    metaAds: Boolean(client?.metaAds),
+    googleAds: Boolean(client?.googleAds),
+    socialMedia: Boolean(client?.socialMedia),
+    videoQuantity: client?.videoQuantity ? String(client.videoQuantity) : "0",
+    imageQuantity: client?.imageQuantity ? String(client.imageQuantity) : "0",
+    otherServices: client?.otherServices || "",
+    notes: client?.notes || "",
+  };
 }
 
 const paymentStatusMap: Record<string, { label: string; icon: any; color: string }> = {
@@ -180,11 +217,65 @@ export default function ClientDetailPage() {
   const { data: docsList } = trpc.documents.list.useQuery({ clientId });
 
   const utils = trpc.useUtils();
-  const refreshClientIntelligence = () => {
-    utils.clients.health.invalidate({ id: clientId });
-    utils.clients.intelligence.invalidate();
-    utils.dashboard.today.invalidate();
+  const refreshClientIntelligence = async () => {
+    await Promise.all([
+      utils.clients.getById.invalidate({ id: clientId }),
+      utils.clients.list.invalidate(),
+      utils.clients.health.invalidate({ id: clientId }),
+      utils.clients.intelligence.invalidate(),
+      utils.dashboard.today.invalidate(),
+      utils.dashboard.stats.invalidate(),
+      utils.payments.billingForecast.invalidate(),
+      utils.strategicFinance.summary.invalidate(),
+    ]);
   };
+
+  const [quickEditOpen, setQuickEditOpen] = useState(false);
+  const [quickForm, setQuickForm] = useState(() => quickFormFromClient(null));
+  useEffect(() => {
+    if (client && !quickEditOpen) setQuickForm(quickFormFromClient(client));
+  }, [client, quickEditOpen]);
+  const updateClient = trpc.clients.update.useMutation({
+    onSuccess: async () => {
+      await refreshClientIntelligence();
+      setQuickEditOpen(false);
+      toast.success("Cliente atualizado!");
+    },
+    onError: () => toast.error("Erro ao atualizar cliente"),
+  });
+
+  function openQuickEdit() {
+    setQuickForm(quickFormFromClient(client));
+    setQuickEditOpen(true);
+  }
+
+  function saveQuickEdit() {
+    updateClient.mutate({
+      id: clientId,
+      companyName: quickForm.companyName.trim(),
+      contactName: quickForm.contactName.trim(),
+      phone: quickForm.phone || undefined,
+      whatsapp: quickForm.whatsapp || undefined,
+      email: quickForm.email || undefined,
+      monthlyValue: quickForm.monthlyValue || "0",
+      startDate: quickForm.startDate ? parseLocalDate(quickForm.startDate) : undefined,
+      contractRenewalDate: quickForm.contractRenewalDate ? parseLocalDate(quickForm.contractRenewalDate) : null,
+      contractEndDate: quickForm.contractEndDate ? parseLocalDate(quickForm.contractEndDate) : null,
+      contractPaymentMethod: quickForm.contractPaymentMethod || null,
+      contractDueDay: quickForm.contractDueDay ? parseInt(quickForm.contractDueDay) : null,
+      contractAdjustment: quickForm.contractAdjustment || null,
+      contractNotes: quickForm.contractNotes || null,
+      contractStatus: quickForm.contractStatus as any,
+      status: quickForm.status as any,
+      metaAds: quickForm.metaAds,
+      googleAds: quickForm.googleAds,
+      socialMedia: quickForm.socialMedia,
+      videoQuantity: parseInt(quickForm.videoQuantity) || 0,
+      imageQuantity: parseInt(quickForm.imageQuantity) || 0,
+      otherServices: quickForm.otherServices || undefined,
+      notes: quickForm.notes || undefined,
+    });
+  }
 
   // Payment dialog
   const [payOpen, setPayOpen] = useState(false);
@@ -291,9 +382,15 @@ export default function ClientDetailPage() {
           <h1 className="text-2xl font-semibold">{client.companyName}</h1>
           <p className="text-muted-foreground text-sm mt-1">{client.contactName}</p>
         </div>
-        <Badge variant={client.status === "active" ? "default" : client.status === "paused" ? "secondary" : "destructive"}>
-          {statusLabels[client.status]}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={openQuickEdit}>
+            <Pencil className="mr-2 h-4 w-4" />
+            Editar rapido
+          </Button>
+          <Badge variant={client.status === "active" ? "default" : client.status === "paused" ? "secondary" : "destructive"}>
+            {statusLabels[client.status]}
+          </Badge>
+        </div>
       </div>
 
       {/* Contact Info */}
@@ -341,9 +438,15 @@ export default function ClientDetailPage() {
                 </CardTitle>
                 <p className="mt-1 text-xs text-muted-foreground">Renovação, vencimento, cobrança, reajuste e observações formais do cliente.</p>
               </div>
-              <Badge variant="outline" className={contractStatusMap[client.contractStatus || "pending"]?.className}>
-                {contractStatusMap[client.contractStatus || "pending"]?.label ?? "Pendente"}
-              </Badge>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" onClick={openQuickEdit}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Editar contrato
+                </Button>
+                <Badge variant="outline" className={contractStatusMap[client.contractStatus || "pending"]?.className}>
+                  {contractStatusMap[client.contractStatus || "pending"]?.label ?? "Pendente"}
+                </Badge>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 md:grid-cols-3">
@@ -527,6 +630,143 @@ export default function ClientDetailPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Quick Edit Dialog */}
+      <Dialog open={quickEditOpen} onOpenChange={setQuickEditOpen}>
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Editar cliente rapidamente</DialogTitle>
+          </DialogHeader>
+
+          <div className="grid gap-5 py-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="space-y-2 md:col-span-2">
+                <Label>Empresa</Label>
+                <Input value={quickForm.companyName} onChange={e => setQuickForm(f => ({ ...f, companyName: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Status do cliente</Label>
+                <Select value={quickForm.status} onValueChange={value => setQuickForm(f => ({ ...f, status: value }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Ativo</SelectItem>
+                    <SelectItem value="paused">Pausado</SelectItem>
+                    <SelectItem value="cancelled">Cancelado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Contato</Label>
+                <Input value={quickForm.contactName} onChange={e => setQuickForm(f => ({ ...f, contactName: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Telefone</Label>
+                <Input value={quickForm.phone} onChange={e => setQuickForm(f => ({ ...f, phone: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>WhatsApp</Label>
+                <Input value={quickForm.whatsapp} onChange={e => setQuickForm(f => ({ ...f, whatsapp: e.target.value }))} />
+              </div>
+              <div className="space-y-2 md:col-span-3">
+                <Label>E-mail</Label>
+                <Input value={quickForm.email} onChange={e => setQuickForm(f => ({ ...f, email: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="rounded-lg border p-4">
+              <p className="mb-3 text-sm font-semibold">Servicos e entregas</p>
+              <div className="grid gap-4 md:grid-cols-3">
+                <label className="flex items-center gap-2 rounded-md border p-3 text-sm">
+                  <input type="checkbox" checked={quickForm.metaAds} onChange={e => setQuickForm(f => ({ ...f, metaAds: e.target.checked }))} />
+                  Meta Ads
+                </label>
+                <label className="flex items-center gap-2 rounded-md border p-3 text-sm">
+                  <input type="checkbox" checked={quickForm.googleAds} onChange={e => setQuickForm(f => ({ ...f, googleAds: e.target.checked }))} />
+                  Google Ads
+                </label>
+                <label className="flex items-center gap-2 rounded-md border p-3 text-sm">
+                  <input type="checkbox" checked={quickForm.socialMedia} onChange={e => setQuickForm(f => ({ ...f, socialMedia: e.target.checked }))} />
+                  Redes sociais
+                </label>
+                <div className="space-y-2">
+                  <Label>Videos por mes</Label>
+                  <Input type="number" min="0" value={quickForm.videoQuantity} onChange={e => setQuickForm(f => ({ ...f, videoQuantity: e.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Imagens por mes</Label>
+                  <Input type="number" min="0" value={quickForm.imageQuantity} onChange={e => setQuickForm(f => ({ ...f, imageQuantity: e.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Outros servicos</Label>
+                  <Input value={quickForm.otherServices} onChange={e => setQuickForm(f => ({ ...f, otherServices: e.target.value }))} />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border p-4">
+              <p className="mb-3 text-sm font-semibold">Contrato e cobranca</p>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label>Valor mensal</Label>
+                  <Input type="number" min="0" step="0.01" value={quickForm.monthlyValue} onChange={e => setQuickForm(f => ({ ...f, monthlyValue: e.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Inicio</Label>
+                  <Input type="date" value={quickForm.startDate} onChange={e => setQuickForm(f => ({ ...f, startDate: e.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Status do contrato</Label>
+                  <Select value={quickForm.contractStatus} onValueChange={value => setQuickForm(f => ({ ...f, contractStatus: value }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Ativo</SelectItem>
+                      <SelectItem value="pending">Pendente</SelectItem>
+                      <SelectItem value="expired">Vencido</SelectItem>
+                      <SelectItem value="cancelled">Cancelado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Dia de vencimento</Label>
+                  <Input type="number" min="1" max="31" value={quickForm.contractDueDay} onChange={e => setQuickForm(f => ({ ...f, contractDueDay: e.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Renovacao</Label>
+                  <Input type="date" value={quickForm.contractRenewalDate} onChange={e => setQuickForm(f => ({ ...f, contractRenewalDate: e.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Vencimento do contrato</Label>
+                  <Input type="date" value={quickForm.contractEndDate} onChange={e => setQuickForm(f => ({ ...f, contractEndDate: e.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Forma de pagamento</Label>
+                  <Input value={quickForm.contractPaymentMethod} onChange={e => setQuickForm(f => ({ ...f, contractPaymentMethod: e.target.value }))} />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Reajuste previsto</Label>
+                  <Input value={quickForm.contractAdjustment} onChange={e => setQuickForm(f => ({ ...f, contractAdjustment: e.target.value }))} />
+                </div>
+                <div className="space-y-2 md:col-span-3">
+                  <Label>Observacoes contratuais</Label>
+                  <Textarea rows={3} value={quickForm.contractNotes} onChange={e => setQuickForm(f => ({ ...f, contractNotes: e.target.value }))} />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Observacoes gerais</Label>
+              <Textarea rows={4} value={quickForm.notes} onChange={e => setQuickForm(f => ({ ...f, notes: e.target.value }))} />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setQuickEditOpen(false)}>Cancelar</Button>
+            <Button onClick={saveQuickEdit} disabled={!quickForm.companyName.trim() || !quickForm.contactName.trim() || updateClient.isPending}>
+              {updateClient.isPending ? "Salvando..." : "Salvar alteracoes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Payment Dialog */}
       <Dialog open={payOpen} onOpenChange={setPayOpen}>

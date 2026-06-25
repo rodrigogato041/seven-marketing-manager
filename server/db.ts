@@ -2212,11 +2212,59 @@ function paymentMessage(companyName: string, amount: number) {
   return `Olá, tudo bem? Passando para lembrar que há um pagamento em aberto da ${companyName} no valor de ${formatted}, referente aos serviços da Seven Marketing. Qualquer dúvida, estou à disposição.`;
 }
 
+export function getContractDueDateForWindow(client: LocalRecord, referenceDate: number, windowEnd: number) {
+  const dueDay = asNumber(client.contractDueDay);
+  if (!dueDay || dueDay < 1 || client.status !== "active") return null;
+  const monthlyValue = money(client.monthlyValue);
+  if (monthlyValue <= 0) return null;
+
+  const reference = new Date(referenceDate);
+  const buildDueDate = (year: number, month: number) => {
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    return new Date(year, month, Math.min(dueDay, lastDay), 12, 0, 0, 0).getTime();
+  };
+  const candidates = [
+    buildDueDate(reference.getFullYear(), reference.getMonth()),
+    buildDueDate(reference.getFullYear(), reference.getMonth() + 1),
+  ];
+
+  return candidates
+    .find(dueDate => dueDate >= referenceDate && dueDate <= windowEnd) ?? null;
+}
+
+export function buildExpectedContractReceivables(clients: LocalRecord[], payments: LocalRecord[], referenceDate: number, windowEnd: number) {
+  return clients
+    .filter(client => client.status === "active")
+    .map(client => {
+      const dueDate = getContractDueDateForWindow(client, referenceDate, windowEnd);
+      if (!dueDate) return null;
+      const alreadyRegistered = payments.some(payment => {
+        if (payment.status === "paid" || payment.clientId !== client.id) return false;
+        const paymentDueDate = asNumber(payment.dueDate);
+        const paymentMonth = new Date(paymentDueDate);
+        const contractMonth = new Date(dueDate);
+        return paymentMonth.getFullYear() === contractMonth.getFullYear()
+          && paymentMonth.getMonth() === contractMonth.getMonth();
+      });
+      if (alreadyRegistered) return null;
+
+      return {
+        type: "contract_expected",
+        label: client.companyName || "Cliente sem nome",
+        description: "Recebimento esperado pelo contrato ativo",
+        amount: roundMoney(money(client.monthlyValue)),
+        dueDate,
+        status: "Previsto",
+      };
+    })
+    .filter(Boolean) as Array<{ type: string; label: string; description: string; amount: number; dueDate: number; status: string }>;
+}
+
 function buildCashWindow(days: number, now: number, payments: LocalRecord[], expenses: LocalRecord[], creditCards: LocalRecord[], collaborators: LocalRecord[], clients: LocalRecord[]) {
   const { start } = getDayRange(new Date(now));
   const end = start + days * 24 * 60 * 60 * 1000 - 1;
   const clientsById = new Map(clients.map(client => [client.id, client]));
-  const receivableItems = payments
+  const registeredReceivableItems = payments
     .filter(payment => payment.status !== "paid" && asNumber(payment.dueDate) <= end)
     .map(payment => ({
       type: "payment",
@@ -2226,6 +2274,8 @@ function buildCashWindow(days: number, now: number, payments: LocalRecord[], exp
       dueDate: payment.dueDate,
       status: asNumber(payment.dueDate) < start ? "Atrasado" : "A vencer",
     }))
+  const expectedContractItems = buildExpectedContractReceivables(clients, payments, start, end);
+  const receivableItems = [...registeredReceivableItems, ...expectedContractItems]
     .sort((a, b) => asNumber(a.dueDate) - asNumber(b.dueDate));
   const expenseItems = expenses
     .filter(expense => isInRange(expense.date, start, end))

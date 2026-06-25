@@ -24,8 +24,9 @@ export default defineConfig({
     host: true,
     allowedHosts: ["localhost", "127.0.0.1"],
     fs: {
-      strict: true,
-      deny: ["**/.*"],
+      strict: false,
+      allow: [path.resolve(import.meta.dirname), path.resolve(import.meta.dirname, "node_modules")],
+      deny: ["**/.env*", "**/*.crt", "**/*.pem"],
     },
   },
 });

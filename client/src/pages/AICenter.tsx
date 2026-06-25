@@ -4,12 +4,15 @@ import {
   BrainCircuit,
   CheckCircle2,
   HelpCircle,
+  History,
   Lightbulb,
   ListChecks,
+  Plus,
   RefreshCw,
   ShieldCheck,
   Sparkles,
   Target,
+  Trash2,
   Wand2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,7 +28,23 @@ type ChatMessage = {
   content: string;
 };
 
+type AiConversation = {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  createdAt: number;
+  updatedAt: number;
+};
+
+type ConversationState = {
+  activeId: string;
+  conversations: AiConversation[];
+};
+
 type Level = "critical" | "high" | "medium" | "low";
+
+const conversationsStorageKey = "seven-ai-conversations-v1";
+const activeConversationStorageKey = "seven-ai-active-conversation-v1";
 
 const starterPrompts = [
   "Assuma como meu socio estrategico e me diga o que devo fazer hoje.",
@@ -53,8 +72,74 @@ function normalizeLevel(level: string | undefined): Level {
   return ["critical", "high", "medium", "low"].includes(level || "") ? level as Level : "medium";
 }
 
+function createConversation(messages: ChatMessage[] = []): AiConversation {
+  const now = Date.now();
+  return {
+    id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${now}-${Math.random()}`,
+    title: getConversationTitle(messages),
+    messages,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function getConversationTitle(messages: ChatMessage[]) {
+  const firstUserMessage = messages.find(message => message.role === "user")?.content.trim();
+  if (!firstUserMessage) return "Nova conversa";
+  return firstUserMessage.length > 54 ? `${firstUserMessage.slice(0, 54)}...` : firstUserMessage;
+}
+
+function sortConversations(conversations: AiConversation[]) {
+  return [...conversations].sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+function loadConversationState(): ConversationState {
+  if (typeof window === "undefined") {
+    const conversation = createConversation();
+    return { activeId: conversation.id, conversations: [conversation] };
+  }
+
+  try {
+    const saved = window.localStorage.getItem(conversationsStorageKey);
+    const conversations = saved ? JSON.parse(saved) as AiConversation[] : [];
+    const validConversations = conversations.filter(
+      conversation => conversation?.id && Array.isArray(conversation.messages)
+    );
+
+    if (validConversations.length) {
+      const activeId = window.localStorage.getItem(activeConversationStorageKey);
+      const activeExists = activeId && validConversations.some(conversation => conversation.id === activeId);
+      return {
+        activeId: activeExists ? activeId : sortConversations(validConversations)[0].id,
+        conversations: sortConversations(validConversations),
+      };
+    }
+  } catch {
+    window.localStorage.removeItem(conversationsStorageKey);
+    window.localStorage.removeItem(activeConversationStorageKey);
+  }
+
+  const conversation = createConversation();
+  return { activeId: conversation.id, conversations: [conversation] };
+}
+
+function saveConversationState(state: ConversationState) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(conversationsStorageKey, JSON.stringify(sortConversations(state.conversations).slice(0, 30)));
+  window.localStorage.setItem(activeConversationStorageKey, state.activeId);
+}
+
+function formatConversationDate(timestamp: number) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(timestamp));
+}
+
 export default function AICenterPage() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [conversationState, setConversationState] = useState<ConversationState>(() => loadConversationState());
   const { data: status } = trpc.ai.status.useQuery(undefined, { refetchInterval: 30000 });
   const { data: context } = trpc.ai.businessContext.useQuery(undefined, { refetchInterval: 30000 });
   const {
@@ -65,14 +150,75 @@ export default function AICenterPage() {
     enabled: false,
     staleTime: Infinity,
   });
+  const activeConversation = useMemo(
+    () => conversationState.conversations.find(conversation => conversation.id === conversationState.activeId) ?? conversationState.conversations[0],
+    [conversationState]
+  );
+  const messages = activeConversation?.messages ?? [];
+
+  function updateConversationState(updater: (current: ConversationState) => ConversationState) {
+    setConversationState(current => {
+      const next = updater(current);
+      const normalized = {
+        ...next,
+        conversations: sortConversations(next.conversations).slice(0, 30),
+      };
+      saveConversationState(normalized);
+      return normalized;
+    });
+  }
+
+  function updateActiveMessages(updater: (messages: ChatMessage[]) => ChatMessage[]) {
+    updateConversationState(current => {
+      const now = Date.now();
+      const conversations = current.conversations.map(conversation => {
+        if (conversation.id !== current.activeId) return conversation;
+        const nextMessages = updater(conversation.messages);
+        return {
+          ...conversation,
+          title: getConversationTitle(nextMessages),
+          messages: nextMessages,
+          updatedAt: now,
+        };
+      });
+
+      return { ...current, conversations };
+    });
+  }
+
+  function startNewConversation() {
+    const conversation = createConversation();
+    updateConversationState(current => ({
+      activeId: conversation.id,
+      conversations: [conversation, ...current.conversations],
+    }));
+  }
+
+  function selectConversation(id: string) {
+    updateConversationState(current => ({ ...current, activeId: id }));
+  }
+
+  function deleteCurrentConversation() {
+    updateConversationState(current => {
+      const remaining = current.conversations.filter(conversation => conversation.id !== current.activeId);
+      if (!remaining.length) {
+        const conversation = createConversation();
+        return { activeId: conversation.id, conversations: [conversation] };
+      }
+
+      const sorted = sortConversations(remaining);
+      return { activeId: sorted[0].id, conversations: sorted };
+    });
+  }
+
   const chatMutation = trpc.ai.chat.useMutation({
     onSuccess: response => {
-      setMessages(previous => [...previous, { role: "assistant", content: response.content }]);
+      updateActiveMessages(previous => [...previous, { role: "assistant", content: response.content }]);
     },
     onError: error => {
       const message = error.message || "Nao foi possivel falar com a IA.";
       toast.error(message);
-      setMessages(previous => [
+      updateActiveMessages(previous => [
         ...previous,
         {
           role: "assistant",
@@ -94,7 +240,7 @@ export default function AICenterPage() {
 
   function handleSend(content: string) {
     const nextMessages: ChatMessage[] = [...messages, { role: "user", content }];
-    setMessages(nextMessages);
+    updateActiveMessages(() => nextMessages);
     chatMutation.mutate({ messages: nextMessages });
   }
 
@@ -265,6 +411,48 @@ export default function AICenterPage() {
         </div>
 
         <div className="space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <History className="h-4 w-4 text-primary" />
+                  Historico da IA
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={deleteCurrentConversation} disabled={chatMutation.isPending}>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Limpar atual
+                  </Button>
+                  <Button size="sm" onClick={startNewConversation} disabled={chatMutation.isPending}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Nova conversa
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {conversationState.conversations.slice(0, 6).map(conversation => (
+                <button
+                  key={conversation.id}
+                  type="button"
+                  onClick={() => selectConversation(conversation.id)}
+                  className={cn(
+                    "w-full rounded-md border bg-background p-3 text-left transition-colors hover:bg-muted",
+                    conversation.id === conversationState.activeId && "border-primary bg-primary/5"
+                  )}
+                >
+                  <span className="block truncate text-sm font-medium">{conversation.title}</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {formatConversationDate(conversation.updatedAt)} - {conversation.messages.length} mensagens salvas
+                  </span>
+                </button>
+              ))}
+              <p className="text-xs text-muted-foreground">
+                Trocar de aba ou voltar depois nao apaga mais a conversa. Reabrir um historico nao chama a IA novamente.
+              </p>
+            </CardContent>
+          </Card>
+
           <AIChatBox
             messages={messages as Message[]}
             onSendMessage={handleSend}
