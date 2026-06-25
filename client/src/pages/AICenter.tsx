@@ -62,15 +62,23 @@ export default function AICenterPage() {
     isFetching: isBriefLoading,
     refetch: refetchBrief,
   } = trpc.ai.proactiveBrief.useQuery(undefined, {
-    refetchInterval: 120000,
-    staleTime: 60000,
+    enabled: false,
+    staleTime: Infinity,
   });
   const chatMutation = trpc.ai.chat.useMutation({
     onSuccess: response => {
       setMessages(previous => [...previous, { role: "assistant", content: response.content }]);
     },
     onError: error => {
-      toast.error(error.message || "Nao foi possivel falar com a IA.");
+      const message = error.message || "Nao foi possivel falar com a IA.";
+      toast.error(message);
+      setMessages(previous => [
+        ...previous,
+        {
+          role: "assistant",
+          content: `Nao consegui concluir a resposta agora.\n\nMotivo: ${message}\n\nVerifique a cota da OpenAI, o modelo configurado e tente novamente.`,
+        },
+      ]);
     },
   });
 
@@ -91,7 +99,9 @@ export default function AICenterPage() {
   }
 
   function askAboutBrief() {
-    const prompt = "Transforme o radar executivo atual em um plano de acao objetivo para hoje, com ordem de prioridade, responsavel sugerido e primeiro passo.";
+    const prompt = brief
+      ? "Transforme o radar executivo atual em um plano de acao objetivo para hoje, com ordem de prioridade, responsavel sugerido e primeiro passo."
+      : "Monte um plano de acao objetivo para hoje usando os dados atuais do CRM, com ordem de prioridade, responsavel sugerido e primeiro passo.";
     handleSend(prompt);
   }
 
@@ -127,11 +137,11 @@ export default function AICenterPage() {
           <div>
             <div className="flex items-center gap-2 text-sm font-medium text-primary">
               <Sparkles className="h-4 w-4" />
-              Radar automatico
+              Radar manual
             </div>
-            <h2 className="mt-2 text-xl font-semibold">{brief?.headline || "Analisando seu negocio agora"}</h2>
+            <h2 className="mt-2 text-xl font-semibold">{brief?.headline || "Radar executivo pausado"}</h2>
             <p className="mt-2 max-w-4xl text-sm leading-6 text-muted-foreground">
-              {brief?.summary || "A IA esta cruzando dados de clientes, financeiro, tarefas, producao e cobrancas para montar o melhor proximo movimento."}
+              {brief?.summary || "Para economizar tokens, a IA so cruza os dados e gera o radar quando voce clicar em Atualizar radar."}
             </p>
           </div>
           <div className="flex flex-wrap gap-2 lg:justify-end">
@@ -201,7 +211,7 @@ export default function AICenterPage() {
               })}
               {!brief?.priorities?.length && (
                 <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                  O radar ainda esta carregando as prioridades.
+                  Clique em Atualizar radar para gerar prioridades com IA. Assim nada consome tokens automaticamente.
                 </div>
               )}
             </CardContent>
@@ -229,7 +239,7 @@ export default function AICenterPage() {
                     </div>
                   );
                 })}
-                {!brief?.risks?.length && <p className="text-sm text-muted-foreground">Nenhum risco critico automatico identificado agora.</p>}
+                {!brief?.risks?.length && <p className="text-sm text-muted-foreground">Os riscos aparecem depois que voce gerar o radar manualmente.</p>}
               </CardContent>
             </Card>
 
@@ -248,7 +258,7 @@ export default function AICenterPage() {
                     <p className="mt-2 text-sm">{opportunity.action}</p>
                   </div>
                 ))}
-                {!brief?.opportunities?.length && <p className="text-sm text-muted-foreground">A IA vai destacar oportunidades quando houver sinais suficientes.</p>}
+                {!brief?.opportunities?.length && <p className="text-sm text-muted-foreground">As oportunidades aparecem depois que voce gerar o radar manualmente.</p>}
               </CardContent>
             </Card>
           </div>

@@ -66,6 +66,7 @@ export type InvokeParams = {
   output_schema?: OutputSchema;
   responseFormat?: ResponseFormat;
   response_format?: ResponseFormat;
+  timeoutMs?: number;
 };
 
 export type ToolCall = {
@@ -320,19 +321,49 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.response_format = normalizedResponseFormat;
   }
 
-  const response = await fetch(resolveApiUrl(), {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${ENV.forgeApiKey}`,
-    },
-    body: JSON.stringify(payload),
-  });
+  const timeoutMs = params.timeoutMs || 45000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(resolveApiUrl(), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${ENV.forgeApiKey}`,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("A IA demorou demais para responder. Tente novamente com uma pergunta menor ou reduza temporariamente o modelo/raciocinio.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const errorText = await response.text();
+    let friendlyMessage = "";
+    try {
+      const parsed = JSON.parse(errorText) as { error?: { code?: string; message?: string; type?: string } };
+      const code = parsed.error?.code;
+      const message = parsed.error?.message || "";
+      if (code === "insufficient_quota" || parsed.error?.type === "insufficient_quota") {
+        friendlyMessage = "A chave da OpenAI esta sem cota ou credito ativo. Verifique Billing e Usage na OpenAI Platform.";
+      } else if (code === "model_not_found" || message.toLowerCase().includes("model")) {
+        friendlyMessage = "O modelo configurado nao esta disponivel para esta chave. Troque OPENAI_MODEL no Render por um modelo liberado na sua conta.";
+      } else if (response.status === 429) {
+        friendlyMessage = "A OpenAI recusou por limite de uso no momento. Aguarde um pouco ou verifique os limites da conta.";
+      }
+    } catch {
+      friendlyMessage = "";
+    }
     throw new Error(
-      `LLM invoke failed: ${response.status} ${response.statusText} – ${errorText}`
+      friendlyMessage || `LLM invoke failed: ${response.status} ${response.statusText} - ${errorText}`
     );
   }
 

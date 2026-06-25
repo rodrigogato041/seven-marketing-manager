@@ -404,14 +404,30 @@ Responda somente JSON valido neste formato:
     },
   ];
 
-  const response = await invokeLLM({
-    messages,
-    maxTokens: 3000,
-    responseFormat: { type: "json_object" },
-  });
-  const content = response.choices[0]?.message?.content;
-  const parsed = safeJsonParse(typeof content === "string" ? content : JSON.stringify(content ?? {}));
-  return normalizeBrief(parsed);
+  try {
+    const response = await invokeLLM({
+      messages,
+      maxTokens: 1800,
+      responseFormat: { type: "json_object" },
+      timeoutMs: 30000,
+    });
+    const content = response.choices[0]?.message?.content;
+    const parsed = safeJsonParse(typeof content === "string" ? content : JSON.stringify(content ?? {}));
+    return normalizeBrief(parsed);
+  } catch {
+    return buildDeterministicBrief(context);
+  }
+}
+
+function buildAiFailureMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : "Erro desconhecido ao chamar a IA.";
+  return [
+    "Nao consegui concluir a resposta da IA agora.",
+    "",
+    `Motivo: ${message}`,
+    "",
+    "O radar local continua funcionando com os dados do sistema. Se isso aconteceu depois de configurar a chave, confira no Render se OPENAI_API_KEY tem credito/cota ativa e se OPENAI_MODEL esta liberado para sua conta.",
+  ].join("\n");
 }
 
 export const aiRouter = router({
@@ -453,12 +469,19 @@ export const aiRouter = router({
       })),
     ];
 
-    const response = await invokeLLM({ messages, maxTokens: 4200 });
-    const content = response.choices[0]?.message?.content;
-    return {
-      content: typeof content === "string" ? content : JSON.stringify(content ?? ""),
-      model: response.model,
-      usage: response.usage,
-    };
+    try {
+      const response = await invokeLLM({ messages, maxTokens: 2400, timeoutMs: 45000 });
+      const content = response.choices[0]?.message?.content;
+      return {
+        content: typeof content === "string" ? content : JSON.stringify(content ?? ""),
+        model: response.model,
+        usage: response.usage,
+      };
+    } catch (error) {
+      return {
+        content: buildAiFailureMessage(error),
+        model: ENV.openAiModel,
+      };
+    }
   }),
 });
